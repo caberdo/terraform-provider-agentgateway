@@ -28,6 +28,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the maintainer release runbook in `contributing/releasing.md`.
 - Documentation set: `AGENTS.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md` and
   this changelog.
+- License: Apache License 2.0 (`LICENSE`).
 
 ### Known limitations
 

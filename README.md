@@ -68,3 +68,7 @@ on the gateway-served UI/API path.
 - [Contributing](CONTRIBUTING.md) — commands, review gates, contract-change protocol.
 - [Changelog](CHANGELOG.md).
 - [Releasing](contributing/releasing.md) — the maintainer release runbook.
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE).
