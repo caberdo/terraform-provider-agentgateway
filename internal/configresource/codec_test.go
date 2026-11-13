@@ -52,7 +52,7 @@ func TestCodecRoundTripPreservesNullVsEmpty(t *testing.T) {
 		}
 	})
 
-	t.Run("decode into RawMessage", func(t *testing.T) {
+	t.Run("decode from raw json", func(t *testing.T) {
 		encoded := json.RawMessage(`{"allowedModels":["gpt-4o"]}`)
 		var decoded codecValue
 		if err := DecodeValue(encoded, &decoded); err != nil {

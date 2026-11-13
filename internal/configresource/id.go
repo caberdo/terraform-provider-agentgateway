@@ -6,7 +6,9 @@ import (
 )
 
 // DeriveID returns the config-resource id that the agentgateway server would
-// assign for the given kind and value.
+// assign for the given kind and value. It is defined only for non-policy kinds;
+// policy ids come from the resource's name attribute, not from the policy body,
+// so callers must use KindResource.ID() for those.
 func DeriveID(kind Kind, value json.RawMessage) (string, error) {
 	if kind == KindLLMSettings || kind == KindMCPSettings || kind == KindModelCatalog {
 		return "default", nil
@@ -19,16 +21,20 @@ func DeriveID(kind Kind, value json.RawMessage) (string, error) {
 
 	switch kind {
 	case KindLLMProvider, KindLLMVirtualModel, KindMCPTarget,
-		KindTrafficGateway, KindTrafficRoute, KindTrafficTCPRoute,
-		KindLLMPolicy, KindMCPPolicy, KindUIPolicy, KindFrontendPolicy:
+		KindTrafficGateway, KindTrafficRoute, KindTrafficTCPRoute:
 		return stringField(body, "name", kind)
 	case KindLLMModel:
-		if id, ok := body["id"]; ok && len(id) > 0 {
-			return unquoteString(id, kind)
+		if idRaw, ok := body["id"]; ok && len(idRaw) > 0 {
+			var id string
+			if err := json.Unmarshal(idRaw, &id); err == nil && id != "" {
+				return id, nil
+			}
 		}
 		return stringField(body, "name", kind)
 	case KindLLMAPIKey:
 		return "", fmt.Errorf("cannot derive id for %s: id is server-generated", kind)
+	case KindLLMPolicy, KindMCPPolicy, KindUIPolicy, KindFrontendPolicy:
+		return "", fmt.Errorf("%s id is the policy key and comes from the resource name attribute, not the value", kind)
 	}
 
 	return "", fmt.Errorf("unknown kind %q", kind)

@@ -49,6 +49,24 @@ func TestDeriveID(t *testing.T) {
 			value:   `{}`,
 			wantErr: true,
 		},
+		{
+			name:  "model falls back to name when id is null",
+			kind:  KindLLMModel,
+			value: `{"id":null,"name":"gpt-4o"}`,
+			want:  "gpt-4o",
+		},
+		{
+			name:  "model falls back to name when id is empty string",
+			kind:  KindLLMModel,
+			value: `{"id":"","name":"gpt-4o"}`,
+			want:  "gpt-4o",
+		},
+		{
+			name:    "policy id is not derived from value",
+			kind:    KindLLMPolicy,
+			value:   `{"name":"apiKey"}`,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {

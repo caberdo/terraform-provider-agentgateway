@@ -38,23 +38,20 @@ func StripManagedMetadata(value json.RawMessage) json.RawMessage {
 		return value
 	}
 
-	changed := false
 	for k := range managedMetadataKeys {
-		if _, ok := metadata[k]; ok {
-			delete(metadata, k)
-			changed = true
-		}
-	}
-	if !changed {
-		return value
+		delete(metadata, k)
 	}
 
-	newMeta, err := json.Marshal(metadata)
-	if err != nil {
-		// Should never happen for a map we just decoded.
-		return value
+	if len(metadata) == 0 {
+		delete(body, "metadata")
+	} else {
+		newMeta, err := json.Marshal(metadata)
+		if err != nil {
+			// Should never happen for a map we just decoded.
+			return value
+		}
+		body["metadata"] = newMeta
 	}
-	body["metadata"] = newMeta
 
 	out, err := json.Marshal(body)
 	if err != nil {

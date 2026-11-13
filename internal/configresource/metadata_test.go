@@ -1,9 +1,32 @@
 package configresource
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
+
+func jsonEqual(t *testing.T, got, want json.RawMessage) bool {
+	t.Helper()
+
+	var gotV, wantV any
+	if err := json.Unmarshal(got, &gotV); err != nil {
+		t.Fatalf("got is not valid JSON: %v", err)
+	}
+	if err := json.Unmarshal(want, &wantV); err != nil {
+		t.Fatalf("want is not valid JSON: %v", err)
+	}
+
+	gotNorm, err := json.Marshal(gotV)
+	if err != nil {
+		t.Fatalf("remarshal got: %v", err)
+	}
+	wantNorm, err := json.Marshal(wantV)
+	if err != nil {
+		t.Fatalf("remarshal want: %v", err)
+	}
+	return bytes.Equal(gotNorm, wantNorm)
+}
 
 func TestStripManagedMetadata(t *testing.T) {
 	cases := []struct {
@@ -12,9 +35,14 @@ func TestStripManagedMetadata(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "removes managed keys",
+			name:  "removes managed keys and keeps user field",
 			value: `{"key":"secret","metadata":{"agentgateway.dev/id":"x","agentgateway.dev/createdAt":"t","agentgateway.dev/owner":"o","team":"platform"}}`,
 			want:  `{"key":"secret","metadata":{"team":"platform"}}`,
+		},
+		{
+			name:  "removes empty metadata object",
+			value: `{"key":"k","metadata":{"agentgateway.dev/id":"x"}}`,
+			want:  `{"key":"k"}`,
 		},
 		{
 			name:  "leaves value without metadata unchanged",
@@ -22,7 +50,7 @@ func TestStripManagedMetadata(t *testing.T) {
 			want:  `{"key":"secret"}`,
 		},
 		{
-			name:  "leaves non-managed metadata unchanged",
+			name:  "leaves non-managed metadata semantically unchanged",
 			value: `{"metadata":{"team":"platform","env":"prod"}}`,
 			want:  `{"metadata":{"team":"platform","env":"prod"}}`,
 		},
@@ -41,7 +69,7 @@ func TestStripManagedMetadata(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := StripManagedMetadata(json.RawMessage(tc.value))
-			if string(got) != tc.want {
+			if !jsonEqual(t, got, json.RawMessage(tc.want)) {
 				t.Fatalf("StripManagedMetadata() = %s, want %s", got, tc.want)
 			}
 		})

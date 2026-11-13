@@ -6,9 +6,27 @@ import (
 )
 
 func TestAllKindsAreUniqueAndFifteen(t *testing.T) {
+	want := []Kind{
+		KindModelCatalog,
+		KindLLMProvider,
+		KindLLMModel,
+		KindLLMVirtualModel,
+		KindLLMAPIKey,
+		KindLLMPolicy,
+		KindLLMSettings,
+		KindMCPTarget,
+		KindMCPPolicy,
+		KindMCPSettings,
+		KindTrafficGateway,
+		KindTrafficRoute,
+		KindTrafficTCPRoute,
+		KindUIPolicy,
+		KindFrontendPolicy,
+	}
+
 	all := All()
-	if len(all) != 15 {
-		t.Fatalf("expected 15 kinds, got %d: %v", len(all), all)
+	if !slices.Equal(all, want) {
+		t.Fatalf("All() = %v, want %v", all, want)
 	}
 
 	seen := make(map[Kind]struct{}, len(all))
