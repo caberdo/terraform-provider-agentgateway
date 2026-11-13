@@ -43,6 +43,8 @@ type ResolvedConfig struct {
 	Password           string
 	HTTPHeaders        map[string]string
 	Timeout            time.Duration
+	TimeoutRaw         string
+	TimeoutErr         error
 	CACert             string
 	CACertFile         string
 	ClientCert         string
@@ -56,13 +58,17 @@ type ResolvedConfig struct {
 
 // Resolve applies environment-variable fallbacks and defaults.
 func (c Config) Resolve() ResolvedConfig {
+	timeout, timeoutRaw, timeoutErr := resolveDuration(c.Timeout, "AGENTGATEWAY_TIMEOUT", 30*time.Second)
+
 	return ResolvedConfig{
 		Endpoint:           resolveString(c.Endpoint, "AGENTGATEWAY_ENDPOINT", "http://127.0.0.1:15000"),
 		Token:              resolveStringNoDefault(c.Token, "AGENTGATEWAY_TOKEN"),
 		Username:           resolveStringNoDefault(c.Username, "AGENTGATEWAY_USERNAME"),
 		Password:           resolveStringNoDefault(c.Password, "AGENTGATEWAY_PASSWORD"),
 		HTTPHeaders:        resolveMap(c.HTTPHeaders),
-		Timeout:            resolveDuration(c.Timeout, "AGENTGATEWAY_TIMEOUT", 30*time.Second),
+		Timeout:            timeout,
+		TimeoutRaw:         timeoutRaw,
+		TimeoutErr:         timeoutErr,
 		CACert:             resolveStringNoDefault(c.CACert, "AGENTGATEWAY_CA_CERT"),
 		CACertFile:         resolveStringNoDefault(c.CACertFile, "AGENTGATEWAY_CA_CERT_FILE"),
 		ClientCert:         resolveStringNoDefault(c.ClientCert, "AGENTGATEWAY_CLIENT_CERT"),
@@ -118,17 +124,28 @@ func (c Config) Validate() diag.Diagnostics {
 		diags.AddError("Invalid client key configuration", err.Error())
 	}
 
-	hasCert := r.ClientCert != "" || r.ClientCertFile != ""
-	hasKey := r.ClientKey != "" || r.ClientKeyFile != ""
-	if hasCert != hasKey {
+	pemCert := r.ClientCert != ""
+	pemKey := r.ClientKey != ""
+	fileCert := r.ClientCertFile != ""
+	fileKey := r.ClientKeyFile != ""
+	if pemCert != pemKey {
 		diags.AddError(
 			"Incomplete mTLS configuration",
-			"client_cert/client_cert_file and client_key/client_key_file must both be set",
+			"client_cert and client_key must both be set",
+		)
+	}
+	if fileCert != fileKey {
+		diags.AddError(
+			"Incomplete mTLS configuration",
+			"client_cert_file and client_key_file must both be set",
 		)
 	}
 
-	if r.Timeout <= 0 {
-		diags.AddError("Invalid timeout", "timeout must be a positive duration")
+	if r.TimeoutErr != nil || r.Timeout <= 0 {
+		diags.AddError(
+			"Invalid timeout",
+			fmt.Sprintf("timeout must be a positive Go duration, got %q", r.TimeoutRaw),
+		)
 	}
 
 	return diags
@@ -204,21 +221,23 @@ func resolveStringNoDefault(v types.String, env string) string {
 	return os.Getenv(env)
 }
 
-func resolveDuration(v types.String, env string, def time.Duration) time.Duration {
-	var s string
+func resolveDuration(v types.String, env string, def time.Duration) (time.Duration, string, error) {
+	var raw string
 	if !v.IsNull() && !v.IsUnknown() {
-		s = v.ValueString()
+		raw = v.ValueString()
 	} else if e := os.Getenv(env); e != "" {
-		s = e
-	} else {
-		return def
+		raw = e
 	}
 
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return def
+	if raw == "" {
+		raw = def.String()
 	}
-	return d
+
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, raw, err
+	}
+	return d, raw, nil
 }
 
 func resolveBool(v types.Bool, env string, def bool) bool {

@@ -19,7 +19,7 @@ func TestConfigureAllowsFileMode(t *testing.T) {
 	srv.SetStoreMode("file")
 
 	p := provider.New("test")()
-	req := newConfigureRequest(t, srv.URL, true)
+	req := newConfigureRequest(t, srv.URL, true, "")
 	var resp fwprovider.ConfigureResponse
 
 	p.Configure(context.Background(), req, &resp)
@@ -41,7 +41,7 @@ func TestConfigureErrorsOnReadOnlyByDefault(t *testing.T) {
 	srv.SetStoreMode("readOnly")
 
 	p := provider.New("test")()
-	req := newConfigureRequest(t, srv.URL, true)
+	req := newConfigureRequest(t, srv.URL, true, "")
 	var resp fwprovider.ConfigureResponse
 
 	p.Configure(context.Background(), req, &resp)
@@ -59,7 +59,7 @@ func TestConfigureSkipsModeCheckWhenVerifyDisabled(t *testing.T) {
 	srv.SetStoreMode("readOnly")
 
 	p := provider.New("test")()
-	req := newConfigureRequest(t, srv.URL, false)
+	req := newConfigureRequest(t, srv.URL, false, "")
 	var resp fwprovider.ConfigureResponse
 
 	p.Configure(context.Background(), req, &resp)
@@ -76,7 +76,54 @@ func TestConfigureSkipsModeCheckWhenVerifyDisabled(t *testing.T) {
 	}
 }
 
-func newConfigureRequest(t *testing.T, endpoint string, verify bool) fwprovider.ConfigureRequest {
+func TestConfigureWarnOnReadOnly(t *testing.T) {
+	srv, _ := agentgatewaytest.New(t)
+	srv.SetStoreMode("readOnly")
+
+	p := provider.New("test")()
+	req := newConfigureRequest(t, srv.URL, true, "warn")
+	var resp fwprovider.ConfigureResponse
+
+	p.Configure(context.Background(), req, &resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error diagnostics: %v", resp.Diagnostics)
+	}
+	data, ok := resp.ResourceData.(*providerdata.Data)
+	if !ok {
+		t.Fatalf("expected *providerdata.Data, got %T", resp.ResourceData)
+	}
+	if data.StoreMode != "readOnly" {
+		t.Errorf("expected store mode readOnly, got %q", data.StoreMode)
+	}
+}
+
+func TestConfigureIgnoresModeCheck(t *testing.T) {
+	srv, _ := agentgatewaytest.New(t)
+	srv.SetStoreMode("readOnly")
+
+	p := provider.New("test")()
+	req := newConfigureRequest(t, srv.URL, true, "ignore")
+	var resp fwprovider.ConfigureResponse
+
+	p.Configure(context.Background(), req, &resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error diagnostics: %v", resp.Diagnostics)
+	}
+	if resp.Diagnostics.WarningsCount() != 0 {
+		t.Fatalf("expected no diagnostics, got %v", resp.Diagnostics)
+	}
+	data, ok := resp.ResourceData.(*providerdata.Data)
+	if !ok {
+		t.Fatalf("expected *providerdata.Data, got %T", resp.ResourceData)
+	}
+	if data.StoreMode != "readOnly" {
+		t.Errorf("expected store mode readOnly, got %q", data.StoreMode)
+	}
+}
+
+func newConfigureRequest(t *testing.T, endpoint string, verify bool, storageModeCheck string) fwprovider.ConfigureRequest {
 	t.Helper()
 
 	schema := providerschema.Schema{
@@ -121,6 +168,11 @@ func newConfigureRequest(t *testing.T, endpoint string, verify bool) fwprovider.
 		"storage_mode_check":   tftypes.String,
 	}
 
+	storageModeCheckValue := tftypes.NewValue(tftypes.String, nil)
+	if storageModeCheck != "" {
+		storageModeCheckValue = tftypes.NewValue(tftypes.String, storageModeCheck)
+	}
+
 	values := map[string]tftypes.Value{
 		"endpoint":             tftypes.NewValue(tftypes.String, endpoint),
 		"token":                tftypes.NewValue(tftypes.String, nil),
@@ -136,7 +188,7 @@ func newConfigureRequest(t *testing.T, endpoint string, verify bool) fwprovider.
 		"client_key_file":      tftypes.NewValue(tftypes.String, nil),
 		"insecure_skip_verify": tftypes.NewValue(tftypes.Bool, nil),
 		"verify":               tftypes.NewValue(tftypes.Bool, verify),
-		"storage_mode_check":   tftypes.NewValue(tftypes.String, nil),
+		"storage_mode_check":   storageModeCheckValue,
 	}
 
 	return fwprovider.ConfigureRequest{

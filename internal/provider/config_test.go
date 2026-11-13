@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -132,15 +133,105 @@ func TestValidateRejectsPasswordWithoutUsername(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsCertWithoutKey(t *testing.T) {
-	cfg := provider.Config{
-		Endpoint:   types.StringValue("https://example.com:15000"),
-		ClientCert: types.StringValue("-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAJHGTVDEssSSMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRlc3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMMBnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC5kzmkCRnEGOrWNwux5MYi/htz7j8LFpXoLGP8xWr5V6iHpFqokYAqV15K4/7mOFsoFZiHgZXZSlvH0xKiWokvAgMBAAGjUDBOMB0GA1UdDgQWBBQI0fKlBJhcG7lW9A0L7VH6GhLmaTAfBgNVHSMEGDAWgBQI0fKlBJhcG7lW9A0L7VH6GhLmaTAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBCwUAA0EAq1rryuD7T7zmjC7OXq4LqTtw/xJ2fPhJpXzsfkqxM9+kHXN2xB8vALMyqeT+G5ZWLHBAjOKoH0U4zEODl9vQhg==\n-----END CERTIFICATE-----"),
+func TestValidateRejectsPartialCertKey(t *testing.T) {
+	certPEM := "-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAJHGTVDEssSSMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRlc3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMMBnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC5kzmkCRnEGOrWNwux5MYi/htz7j8LFpXoLGP8xWr5V6iHpFqokYAqV15K4/7mOFsoFZiHgZXZSlvH0xKiWokvAgMBAAGjUDBOMB0GA1UdDgQWBBQI0fKlBJhcG7lW9A0L7VH6GhLmaTAfBgNVHSMEGDAWgBQI0fKlBJhcG7lW9A0L7VH6GhLmaTAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBCwUAA0EAq1rryuD7T7zmjC7OXq4LqTtw/xJ2fPhJpXzsfkqxM9+kHXN2xB8vALMyqeT+G5ZWLHBAjOKoH0U4zEODl9vQhg==\n-----END CERTIFICATE-----"
+
+	cases := []struct {
+		name string
+		cfg  provider.Config
+	}{
+		{
+			name: "pem cert without pem key",
+			cfg: provider.Config{
+				Endpoint:   types.StringValue("https://example.com:15000"),
+				ClientCert: types.StringValue(certPEM),
+			},
+		},
+		{
+			name: "file cert without file key",
+			cfg: provider.Config{
+				Endpoint:       types.StringValue("https://example.com:15000"),
+				ClientCertFile: types.StringValue("/path/to/cert.pem"),
+			},
+		},
+		{
+			name: "pem cert with file key",
+			cfg: provider.Config{
+				Endpoint:      types.StringValue("https://example.com:15000"),
+				ClientCert:    types.StringValue(certPEM),
+				ClientKeyFile: types.StringValue("/path/to/key.pem"),
+			},
+		},
+		{
+			name: "file cert with pem key",
+			cfg: provider.Config{
+				Endpoint:       types.StringValue("https://example.com:15000"),
+				ClientCertFile: types.StringValue("/path/to/cert.pem"),
+				ClientKey:      types.StringValue("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC5kzmkCRnEGOrW\n-----END PRIVATE KEY-----"),
+			},
+		},
 	}
 
-	diags := cfg.Validate()
-	if !diags.HasError() {
-		t.Fatal("expected validation error when client certificate is provided without key")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			diags := tc.cfg.Validate()
+			if !diags.HasError() {
+				t.Fatal("expected validation error when client certificate is provided without key")
+			}
+		})
+	}
+}
+
+func TestValidateRejectsInvalidTimeout(t *testing.T) {
+	base := provider.Config{Endpoint: types.StringValue("https://example.com:15000")}
+
+	errorCases := []string{"not-a-duration", "0", "-5s"}
+	for _, raw := range errorCases {
+		t.Run(raw, func(t *testing.T) {
+			cfg := base
+			cfg.Timeout = types.StringValue(raw)
+			diags := cfg.Validate()
+			if !diags.HasError() {
+				t.Fatal("expected validation error for invalid timeout")
+			}
+			want := fmt.Sprintf("timeout must be a positive Go duration, got %q", raw)
+			found := false
+			for _, d := range diags.Errors() {
+				if d.Detail() == want {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("expected diagnostic %q, got %v", want, diags)
+			}
+		})
+	}
+
+	passCases := []struct {
+		name     string
+		raw      string
+		setValue bool
+		expected time.Duration
+	}{
+		{"empty (unset)", "", false, 30 * time.Second},
+		{"45s", "45s", true, 45 * time.Second},
+	}
+	for _, tc := range passCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := base
+			if tc.setValue {
+				cfg.Timeout = types.StringValue(tc.raw)
+			} else {
+				cfg.Timeout = types.StringNull()
+			}
+			diags := cfg.Validate()
+			if diags.HasError() {
+				t.Fatalf("unexpected validation error: %v", diags)
+			}
+			if cfg.Resolve().Timeout != tc.expected {
+				t.Errorf("expected timeout %v, got %v", tc.expected, cfg.Resolve().Timeout)
+			}
+		})
 	}
 }
 
