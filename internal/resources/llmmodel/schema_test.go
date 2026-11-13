@@ -71,12 +71,15 @@ func TestLLMModelSchema(t *testing.T) {
 
 	union := []string{"provider_name", "provider_reference", "custom_provider_json"}
 	for _, name := range union {
-		attribute, ok := attrs[name]
+		attribute, ok := attrs[name].(schema.StringAttribute)
 		if !ok {
-			t.Fatalf("schema is missing provider option %q", name)
+			t.Fatalf("provider option %q is not a string attribute", name)
 		}
-		if !attribute.IsOptional() {
+		if !attribute.Optional {
 			t.Errorf("%s must be optional", name)
+		}
+		if len(attribute.Validators) == 0 {
+			t.Errorf("%s must carry the ExactlyOneOf validator", name)
 		}
 	}
 

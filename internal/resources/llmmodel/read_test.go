@@ -44,9 +44,6 @@ func TestLLMModelReadPreservesUnknownJSON(t *testing.T) {
 			if !m.GuardrailsJSON.IsNull() {
 				t.Fatalf("guardrails_json = %q, want null", m.GuardrailsJSON.ValueString())
 			}
-			if got := m.GuardrailsJSON.ValueString(); got == "{}" {
-				t.Fatalf("guardrails_json = %q, want null not an empty object", got)
-			}
 		})
 	}
 }
@@ -143,6 +140,55 @@ func TestLLMModelSetValueRoundTrip(t *testing.T) {
 	}
 	if got := m.PromptCachingJSON.ValueString(); got != `{"enabled":true}` {
 		t.Errorf("prompt_caching_json = %q, want the server value", got)
+	}
+}
+
+// TestLLMModelSetValueKeepsNullTypedAttributes proves a typed attribute the
+// model never set stays null when the server omits it or sends an explicit
+// null; SetValue must not materialize a zero value.
+func TestLLMModelSetValueKeepsNullTypedAttributes(t *testing.T) {
+	t.Parallel()
+
+	m := &model{}
+	var diags diag.Diagnostics
+	m.SetValue(
+		context.Background(),
+		json.RawMessage(`{"name":"gpt-4o","provider":"openai","params":{},"displayName":null,"id":null}`),
+		&diags,
+	)
+	if diags.HasError() {
+		t.Fatalf("SetValue() returned diagnostics: %v", diags)
+	}
+
+	nulls := map[string]types.String{
+		"id":                  m.IDValue,
+		"display_name":        m.DisplayName,
+		"visibility":          m.Visibility,
+		"provider_reference":  m.ProviderReference,
+		"model":               m.Model,
+		"api_key":             m.APIKey,
+		"base_url":            m.BaseURL,
+		"host_override":       m.HostOverride,
+		"path_override":       m.PathOverride,
+		"path_prefix":         m.PathPrefix,
+		"aws_region":          m.AWSRegion,
+		"vertex_region":       m.VertexRegion,
+		"vertex_project":      m.VertexProject,
+		"azure_resource_name": m.AzureResourceName,
+		"azure_resource_type": m.AzureResourceType,
+		"azure_api_version":   m.AzureAPIVersion,
+		"azure_project_name":  m.AzureProjectName,
+	}
+	for name, value := range nulls {
+		if !value.IsNull() {
+			t.Errorf("%s = %q, want null", name, value.ValueString())
+		}
+	}
+	if !m.Tokenize.IsNull() {
+		t.Errorf("tokenize = %v, want null", m.Tokenize)
+	}
+	if !m.CustomProviderJSON.IsNull() {
+		t.Errorf("custom_provider_json = %q, want null", m.CustomProviderJSON.ValueString())
 	}
 }
 

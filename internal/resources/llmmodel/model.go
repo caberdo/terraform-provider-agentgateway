@@ -72,7 +72,10 @@ func newSchema() schema.Schema {
 					stringvalidator.ExactlyOneOf(providerOptions...),
 				},
 			},
-			"custom_provider_json": jsonAttribute("Custom provider as JSON, `{model, providerOverride, formats}`. Exactly one of `provider_name`, `provider_reference` or `custom_provider_json` must be set."),
+			"custom_provider_json": jsonAttributeWithValidators(
+				"Custom provider as JSON, `{model, providerOverride, formats}`. Exactly one of `provider_name`, `provider_reference` or `custom_provider_json` must be set.",
+				stringvalidator.ExactlyOneOf(providerOptions...),
+			),
 			"model": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Upstream model id (`params.model`).",
@@ -160,11 +163,18 @@ func newSchema() schema.Schema {
 // Sensitive because they can carry credentials: custom provider overrides,
 // HTTP authorization, backend auth/TLS and header modifiers (spec §12).
 func jsonAttribute(description string) schema.StringAttribute {
+	return jsonAttributeWithValidators(description)
+}
+
+// jsonAttributeWithValidators returns an optional normalized-JSON attribute
+// carrying the given validators.
+func jsonAttributeWithValidators(description string, validators ...validator.String) schema.StringAttribute {
 	return schema.StringAttribute{
 		Optional:            true,
 		Sensitive:           true,
 		CustomType:          jsontypes.NormalizedType{},
 		MarkdownDescription: description,
+		Validators:          validators,
 	}
 }
 

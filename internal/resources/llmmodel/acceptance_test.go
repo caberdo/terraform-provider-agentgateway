@@ -49,11 +49,12 @@ func TestAccLLMModelResource(t *testing.T) {
 				ImportState:       true,
 				ImportStateId:     acceptanceName,
 				ImportStateVerify: true,
-				// api_key is sensitive and the gateway expands the env reference
-				// on read. JSON leaves the configuration set are preserved as
-				// null by Read (see preserveJSONLeaf), so import cannot verify
-				// them either.
-				ImportStateVerifyIgnore: []string{"api_key", "defaults_json"},
+				// Read preserves JSON leaves the configuration left null, so an
+				// imported state cannot reproduce a configured defaults_json.
+				// The gateway may also omit or normalize defaulted params and
+				// expands the api_key env reference on read.
+				ExpectNonEmptyPlan:      true,
+				ImportStateVerifyIgnore: []string{"api_key", "defaults_json", "tokenize", "visibility"},
 			},
 			{
 				Config: modelUpdatedConfig,
