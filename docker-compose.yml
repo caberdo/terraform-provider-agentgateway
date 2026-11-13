@@ -1,0 +1,116 @@
+# Acceptance environment for the agentgateway provider (design §10).
+#
+# Three gateways run side by side, because one instance cannot produce every
+# negative path the provider has to handle:
+#
+#   hybrid    storage.mode hybrid with a SQLite database. The happy path for
+#             every resource. Its config file has no llm.policies.apiKey, so
+#             an API key without that policy fails with 409 (C10, C23).
+#   readonly  storage.mode readOnly. Every write fails with 403 (C8).
+#   fileowned storage.mode hybrid, but the config file owns
+#             mcp.statefulMode, so a write that changes the field fails with
+#             409 (C9).
+#
+# The admin address has no authentication (C1), so the published ports are
+# bound to the host loopback and never to a routable address.
+#
+# `make testacc-docker` runs the suite against this project and
+# `make testacc-matrix` runs it once per supported agentgateway release, each
+# in its own compose project.
+
+services:
+  hybrid:
+    image: cr.agentgateway.dev/agentgateway:${AGENTGATEWAY_VERSION:-v1.7.0}
+    command: ["-f", "/etc/agentgateway/config.yaml"]
+    # The image runs as a non-root user, which cannot create the SQLite file
+    # in a fresh named volume.
+    user: "0:0"
+    ports:
+      - "127.0.0.1:15000:15000"
+    volumes:
+      # The config file is the read-only baseline of the hybrid storage mode.
+      - ./test/acceptance/agentgateway/hybrid.yaml:/etc/agentgateway/config.yaml:ro
+      - hybrid-db:/config
+
+  readonly:
+    image: cr.agentgateway.dev/agentgateway:${AGENTGATEWAY_VERSION:-v1.7.0}
+    command: ["-f", "/etc/agentgateway/config.yaml"]
+    ports:
+      - "127.0.0.1:15001:15001"
+    volumes:
+      - ./test/acceptance/agentgateway/readonly.yaml:/etc/agentgateway/config.yaml:ro
+
+  fileowned:
+    image: cr.agentgateway.dev/agentgateway:${AGENTGATEWAY_VERSION:-v1.7.0}
+    command: ["-f", "/etc/agentgateway/config.yaml"]
+    # The image runs as a non-root user, which cannot create the SQLite file
+    # in a fresh named volume.
+    user: "0:0"
+    ports:
+      - "127.0.0.1:15002:15002"
+    volumes:
+      # The config file owns mcp.statefulMode, so it is the baseline of the
+      # hybrid storage mode here as well.
+      - ./test/acceptance/agentgateway/fileowned.yaml:/etc/agentgateway/config.yaml:ro
+      - fileowned-db:/config
+
+  # Runs the acceptance suite against the three gateways above. The suite
+  # talks to them over the compose network, by service name.
+  test:
+    # Keep the Go version in step with the go directive in go.mod: the
+    # container compiles the suite with the toolchain the module asks for.
+    image: golang:${GO_VERSION:-1.27.4}
+    working_dir: /app
+    volumes:
+      - .:/app
+      - go-modules:/go/pkg/mod
+    environment:
+      TF_ACC: "1"
+      AGENTGATEWAY_ENDPOINT: "http://hybrid:15000"
+      AGENTGATEWAY_ENDPOINT_READONLY: "http://readonly:15001"
+      AGENTGATEWAY_ENDPOINT_FILEOWNED: "http://fileowned:15002"
+      # Set by `make testacc-matrix` and by CI: PreCheck fails when the
+      # gateway reports another release than the one under test.
+      AGENTGATEWAY_EXPECT_VERSION: "${AGENTGATEWAY_EXPECT_VERSION:-}"
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        # Compose starts the gateways but does not wait for the admin API to
+        # listen, so wait for it before the suite runs.
+        for endpoint in hybrid:15000 readonly:15001 fileowned:15002; do
+          ready=
+          for attempt in $$(seq 1 60); do
+            if curl -fsS "http://$$endpoint/api/runtime" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$$ready" != "1" ]; then
+            echo "the agentgateway at $$endpoint did not answer on /api/runtime" >&2
+            exit 1
+          fi
+        done
+        go mod download
+        status=0
+        # The coverage profile lands in the mounted worktree, where
+        # `make coverage-merge` and the acceptance job pick it up.
+        go test -v -count=1 -timeout 30m \
+          -covermode=atomic -coverprofile=/app/coverage-acceptance.out -coverpkg=./internal/... \
+          ./internal/... || status=$$?
+        if [ -f coverage-acceptance.out ]; then
+          echo "Acceptance coverage (covered statements, ./internal/...):"
+          go tool cover -func=coverage-acceptance.out | tail -1
+        fi
+        exit $$status
+    depends_on:
+      - hybrid
+      - readonly
+      - fileowned
+
+volumes:
+  hybrid-db:
+  fileowned-db:
+  go-modules:
