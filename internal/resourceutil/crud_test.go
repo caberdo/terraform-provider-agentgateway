@@ -256,11 +256,9 @@ func TestCreateRefusesExistingID(t *testing.T) {
 		t.Fatal("expected error diagnostic for existing id")
 	}
 	msg := resp.Diagnostics.Errors()[0].Detail()
-	if !strings.Contains(msg, "already exists") {
-		t.Errorf("expected 'already exists' in diagnostic, got %q", msg)
-	}
-	if !strings.Contains(msg, "terraform import") {
-		t.Errorf("expected import hint in diagnostic, got %q", msg)
+	want := "llm.provider/existing already exists outside Terraform state; import it with terraform import <address> llm.provider/existing"
+	if msg != want {
+		t.Errorf("unexpected diagnostic detail:\n got: %q\nwant: %q", msg, want)
 	}
 
 	// Ensure no additional write was attempted.
