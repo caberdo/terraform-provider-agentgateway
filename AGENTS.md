@@ -4,15 +4,25 @@ Guidance for coding agents working in this repository.
 
 ## Read these before changing behaviour
 
-These two documents are kept locally (they live under `docs/superpowers/`,
-which is gitignored) and are not part of the repository; obtain them from the
-maintainer if they are missing:
+The binding design and the implementation plan are **not committed**. The
+maintainer keeps them in the main checkout under `docs/superpowers/`:
 
 1. `docs/superpowers/specs/2026-11-13-terraform-provider-agentgateway-design.md`
    — the binding design: constraints (C1–C25), frozen interfaces, resource
    contracts and the read-back matrix.
 2. `docs/superpowers/plans/2026-11-13-terraform-provider-agentgateway-v1.md` —
    the task-by-task implementation plan and lane ownership.
+
+Those paths are gitignored on purpose, so **a linked worktree does not contain
+them**. Work that runs under SDD is given what it needs instead:
+
+- the brief for its own task at `.superpowers/sdd/<plan>/task-<N>-brief.md`,
+- the shared templates beside it in the same directory
+  (`resource-task-template.md`, `datasource-task-template.md`), and
+- `progress.md`, which records the state of the plan.
+
+Two further documents *are* committed, and are therefore readable everywhere:
+
 3. `ARCHITECTURE.md` — how the pieces fit together.
 4. `CONTRIBUTING.md` — commands, review gates and the contract-change protocol.
 

@@ -19,6 +19,13 @@ if ! command -v terraform >/dev/null 2>&1; then
   exit 0
 fi
 
+# No examples yet: there is nothing to validate. Skip instead of letting
+# `terraform fmt` fail on the missing directory.
+if [ ! -d examples ]; then
+  echo "no examples/ directory yet; skipping example validation" >&2
+  exit 0
+fi
+
 terraform fmt -check -recursive examples
 
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"

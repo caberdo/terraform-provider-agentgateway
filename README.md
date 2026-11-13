@@ -69,6 +69,14 @@ on the gateway-served UI/API path.
 - [Changelog](CHANGELOG.md).
 - [Releasing](contributing/releasing.md) — the maintainer release runbook.
 
+## Coverage
+
+<!-- coverage:start -->
+![Coverage floor](https://img.shields.io/badge/coverage%20floor-80%25-green)
+
+The coverage gate fails below **80%** (`./scripts/coverage-gate.sh`).
+<!-- coverage:end -->
+
 ## License
 
 Mozilla Public License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
