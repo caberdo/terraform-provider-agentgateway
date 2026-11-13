@@ -71,4 +71,4 @@ on the gateway-served UI/API path.
 
 ## License
 
-Apache License 2.0 — see [`LICENSE`](LICENSE).
+Mozilla Public License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
