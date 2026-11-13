@@ -1,3 +1,13 @@
+# Placeholder PEM material so this example validates without certificate
+# files. Replace the values with real certificates (or file() references to
+# them) before applying the configuration.
+locals {
+  server_cert = "-----BEGIN CERTIFICATE-----\nplaceholder-server-certificate\n-----END CERTIFICATE-----"
+  server_key  = "-----BEGIN PRIVATE KEY-----\nplaceholder-server-key\n-----END PRIVATE KEY-----"
+  secure_cert = "-----BEGIN CERTIFICATE-----\nplaceholder-secure-certificate\n-----END CERTIFICATE-----"
+  secure_key  = "-----BEGIN PRIVATE KEY-----\nplaceholder-secure-key\n-----END PRIVATE KEY-----"
+}
+
 # A gateway with a server-side TLS certificate. Routes attach to it by name.
 resource "agentgateway_traffic_gateway" "public" {
   name         = "public"
@@ -6,8 +16,8 @@ resource "agentgateway_traffic_gateway" "public" {
   protocol     = "HTTPS"
 
   tls_json = jsonencode({
-    cert = file("${path.module}/server.crt")
-    key  = file("${path.module}/server.key")
+    cert = local.server_cert
+    key  = local.server_key
   })
 }
 
@@ -31,8 +41,8 @@ resource "agentgateway_traffic_gateway" "multi_listener" {
     protocol = "HTTPS"
 
     tls_json = jsonencode({
-      cert = file("${path.module}/secure.crt")
-      key  = file("${path.module}/secure.key")
+      cert = local.secure_cert
+      key  = local.secure_key
     })
   }
 }

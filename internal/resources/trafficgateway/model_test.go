@@ -114,6 +114,13 @@ func TestTrafficGatewayValue(t *testing.T) {
 			mutate: func(m *model) {
 				m.TLS = jsontypes.NewNormalizedNull()
 				m.OIDC = jsontypes.NewNormalizedNull()
+				m.JWTAuth = jsontypes.NewNormalizedNull()
+				m.Authorization = jsontypes.NewNormalizedNull()
+				m.ExtAuthz = jsontypes.NewNormalizedNull()
+				m.ExtProc = jsontypes.NewNormalizedNull()
+				m.CORS = jsontypes.NewNormalizedNull()
+				m.Transformations = jsontypes.NewNormalizedNull()
+				m.BasicAuth = jsontypes.NewNormalizedNull()
 				m.APIKey = jsontypes.NewNormalizedNull()
 			},
 			want: `{"name":"gw"}`,
