@@ -46,6 +46,8 @@ func TestAccVirtualModelResource(t *testing.T) {
 				),
 			},
 			{
+				// Strict on purpose: if the real gateway omits weight/priority
+				// from its response, this step must surface it, not mask it.
 				ResourceName:      "agentgateway_llm_virtual_model.test",
 				ImportState:       true,
 				ImportStateId:     acceptanceName,

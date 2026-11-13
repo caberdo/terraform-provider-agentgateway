@@ -291,7 +291,7 @@ func (m *virtualModelModel) setWeighted(ctx context.Context, targets []serverWei
 
 		decoded = append(decoded, weightedTargetModel{
 			Model:  preserveString(ctx, old.Model, stringOrNull(target.Model)),
-			Weight: preserveDefaultInt64(ctx, old.Weight, int64OrNull(target.Weight), 1),
+			Weight: preserveInt64(ctx, old.Weight, int64OrNull(target.Weight)),
 		})
 	}
 	return []weightedModel{{Targets: decoded}}
@@ -312,7 +312,7 @@ func (m *virtualModelModel) setFailover(ctx context.Context, targets []serverFai
 
 		decoded = append(decoded, failoverTargetModel{
 			Model:    preserveString(ctx, old.Model, stringOrNull(target.Model)),
-			Priority: preserveDefaultInt64(ctx, old.Priority, int64OrNull(target.Priority), 0),
+			Priority: preserveInt64(ctx, old.Priority, int64OrNull(target.Priority)),
 		})
 	}
 	return []failoverModel{{Targets: decoded}}
@@ -341,25 +341,19 @@ func (m *virtualModelModel) setConditional(ctx context.Context, targets []server
 
 // preserveString keeps the existing value when the server did not return one.
 func preserveString(ctx context.Context, existing, server types.String) types.String {
-	preserved, ok := resourceutil.PreserveIfNull(ctx, existing, server).(types.String)
-	if !ok {
-		return existing
-	}
-	return preserved
+	return resourceutil.PreserveIfNull(ctx, existing, server).(types.String)
 }
 
-// preserveDefaultInt64 keeps the existing value when the server omitted the
-// field. When the server applied its default to an attribute the user left
-// unset, the attribute stays null so the plan and the refreshed state agree.
-func preserveDefaultInt64(ctx context.Context, existing, server types.Int64, defaultValue int64) types.Int64 {
-	if !server.IsNull() && existing.IsNull() && server.ValueInt64() == defaultValue {
-		return existing
+// preserveInt64 stores whatever the server returned and only falls back to the
+// prior state value when the response omitted the field (spec §7.0). A value
+// the user omitted is unknown in the plan because the attribute is
+// Optional+Computed; if the response omits it too, it resolves to null rather
+// than leaking an unknown into state.
+func preserveInt64(ctx context.Context, existing, server types.Int64) types.Int64 {
+	if server.IsNull() && existing.IsUnknown() {
+		return types.Int64Null()
 	}
-	preserved, ok := resourceutil.PreserveIfNull(ctx, existing, server).(types.Int64)
-	if !ok {
-		return existing
-	}
-	return preserved
+	return resourceutil.PreserveIfNull(ctx, existing, server).(types.Int64)
 }
 
 func stringOrNull(value *string) types.String {

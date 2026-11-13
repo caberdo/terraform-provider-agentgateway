@@ -53,12 +53,13 @@ func TestVirtualModelSetValue(t *testing.T) {
 		}
 	})
 
-	t.Run("server default weight keeps an unset weight null", func(t *testing.T) {
+	t.Run("server-returned default weight is stored", func(t *testing.T) {
 		t.Parallel()
 
+		// A config that omits weight plans it as unknown (Optional+Computed).
 		model := &virtualModelModel{
 			Weighted: []weightedModel{{Targets: []weightedTargetModel{
-				{Model: types.StringValue("a")},
+				{Model: types.StringValue("a"), Weight: types.Int64Unknown()},
 			}}},
 		}
 		var diags diag.Diagnostics
@@ -67,12 +68,53 @@ func TestVirtualModelSetValue(t *testing.T) {
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
 		}
-		if !model.Weighted[0].Targets[0].Weight.IsNull() {
-			t.Errorf("weight = %v, want null so the plan and state agree", model.Weighted[0].Targets[0].Weight)
+		if got := model.Weighted[0].Targets[0].Weight.ValueInt64(); got != 1 {
+			t.Errorf("weight = %d, want 1 because the response contained the field", got)
 		}
 	})
 
-	t.Run("server weight overrides a null state weight when it is not the default", func(t *testing.T) {
+	t.Run("an explicit priority of zero is stored", func(t *testing.T) {
+		t.Parallel()
+
+		model := &virtualModelModel{
+			Failover: []failoverModel{{Targets: []failoverTargetModel{
+				{Model: types.StringValue("a"), Priority: types.Int64Value(0)},
+			}}},
+		}
+		var diags diag.Diagnostics
+		model.SetValue(context.Background(), json.RawMessage(`{"name":"resilient","routing":{"failover":{"targets":[{"model":"a","priority":0}]}}}`), &diags)
+
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
+		}
+		if got := model.Failover[0].Targets[0].Priority.ValueInt64(); got != 0 {
+			t.Errorf("priority = %d, want 0", got)
+		}
+		if model.Failover[0].Targets[0].Priority.IsNull() {
+			t.Error("priority is null, want the server-returned 0")
+		}
+	})
+
+	t.Run("an omitted weight preserves the prior state value", func(t *testing.T) {
+		t.Parallel()
+
+		model := &virtualModelModel{
+			Weighted: []weightedModel{{Targets: []weightedTargetModel{
+				{Model: types.StringValue("a"), Weight: types.Int64Value(7)},
+			}}},
+		}
+		var diags diag.Diagnostics
+		model.SetValue(context.Background(), json.RawMessage(`{"name":"smart","routing":{"weighted":{"targets":[{"model":"a"}]}}}`), &diags)
+
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
+		}
+		if got := model.Weighted[0].Targets[0].Weight.ValueInt64(); got != 7 {
+			t.Errorf("weight = %d, want the prior state value 7", got)
+		}
+	})
+
+	t.Run("server weight overrides a null state weight", func(t *testing.T) {
 		t.Parallel()
 
 		model := &virtualModelModel{
@@ -91,12 +133,13 @@ func TestVirtualModelSetValue(t *testing.T) {
 		}
 	})
 
-	t.Run("server default priority keeps an unset priority null", func(t *testing.T) {
+	t.Run("server-returned default priority is stored", func(t *testing.T) {
 		t.Parallel()
 
+		// A config that omits priority plans it as unknown (Optional+Computed).
 		model := &virtualModelModel{
 			Failover: []failoverModel{{Targets: []failoverTargetModel{
-				{Model: types.StringValue("a")},
+				{Model: types.StringValue("a"), Priority: types.Int64Unknown()},
 			}}},
 		}
 		var diags diag.Diagnostics
@@ -105,8 +148,30 @@ func TestVirtualModelSetValue(t *testing.T) {
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
 		}
-		if !model.Failover[0].Targets[0].Priority.IsNull() {
-			t.Errorf("priority = %v, want null", model.Failover[0].Targets[0].Priority)
+		if got := model.Failover[0].Targets[0].Priority.ValueInt64(); got != 0 {
+			t.Errorf("priority = %d, want 0 because the response contained the field", got)
+		}
+		if model.Failover[0].Targets[0].Priority.IsNull() {
+			t.Error("priority is null, want the server-returned 0")
+		}
+	})
+
+	t.Run("an unknown weight resolves to null when the response omits it", func(t *testing.T) {
+		t.Parallel()
+
+		model := &virtualModelModel{
+			Weighted: []weightedModel{{Targets: []weightedTargetModel{
+				{Model: types.StringValue("a"), Weight: types.Int64Unknown()},
+			}}},
+		}
+		var diags diag.Diagnostics
+		model.SetValue(context.Background(), json.RawMessage(`{"name":"smart","routing":{"weighted":{"targets":[{"model":"a"}]}}}`), &diags)
+
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
+		}
+		if !model.Weighted[0].Targets[0].Weight.IsNull() {
+			t.Errorf("weight = %v, want null rather than an unknown in state", model.Weighted[0].Targets[0].Weight)
 		}
 	})
 

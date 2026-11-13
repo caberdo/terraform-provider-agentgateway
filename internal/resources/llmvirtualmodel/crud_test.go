@@ -1,6 +1,7 @@
 package llmvirtualmodel
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 
@@ -112,6 +113,37 @@ resource "agentgateway_llm_virtual_model" "test" {
 					{
 						Config:      tt.config,
 						ExpectError: regexp.MustCompile(`one \(and only one\)`),
+					},
+				},
+			})
+		})
+	}
+}
+
+// TestVirtualModelSchemaRejectsEmptyRoutingBlock proves a declared routing
+// block without targets fails during plan, before any request reaches the
+// gateway. PlanOnly keeps the assertion honest: an apply-time diagnostic from
+// Value() would not satisfy the step.
+func TestVirtualModelSchemaRejectsEmptyRoutingBlock(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"weighted", "failover", "conditional"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := agentgatewaytest.New(t)
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testFactories(server.URL),
+				Steps: []resource.TestStep{
+					{
+						Config: fmt.Sprintf(`
+resource "agentgateway_llm_virtual_model" "test" {
+  name = "vm"
+
+  %s {}
+}`, mode),
+						PlanOnly:    true,
+						ExpectError: regexp.MustCompile(`requires at least one targets block`),
 					},
 				},
 			})
