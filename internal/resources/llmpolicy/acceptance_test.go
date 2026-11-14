@@ -2,8 +2,11 @@ package llmpolicy
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/acctest"
@@ -20,52 +23,135 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+// The policy key is enum-constrained (spec §7.5), so an acceptance test cannot
+// use a per-run suffix. Rerun safety comes from clearing the keys this package
+// owns before a test starts: Create refuses an id that already exists outside
+// state, so a policy left behind by an aborted run would poison every later run.
+const (
+	corsPolicyName   = "cors"
+	apiKeyPolicyName = "apiKey"
+	resourceAddress  = "agentgateway_llm_policy.test"
+)
+
+const apiKeyBody = `{"mode":"strict"}`
+
+var (
+	corsConfig = fmt.Sprintf(`
+resource "agentgateway_llm_policy" "test" {
+  name = %q
+  spec = jsonencode({
+    allowOrigins = ["https://example.com"]
+  })
+}`, corsPolicyName)
+
+	corsUpdatedConfig = fmt.Sprintf(`
+resource "agentgateway_llm_policy" "test" {
+  name = %q
+  spec = jsonencode({
+    allowOrigins = ["https://example.com", "https://app.example.com"]
+    allowMethods = ["GET", "POST"]
+  })
+}`, corsPolicyName)
+
+	apiKeyConfig = fmt.Sprintf(`
+resource "agentgateway_llm_policy" "test" {
+  name = %q
+  spec = jsonencode({
+    mode = "strict"
+  })
+}`, apiKeyPolicyName)
+)
+
 // TestAccLLMPolicyResource covers create, import, update and destroy of a
 // policy against the hybrid gateway. It compiles everywhere and only runs when
 // TF_ACC is set and the acceptance environment is reachable.
 func TestAccLLMPolicyResource(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
+	clearPolicy(t, endpoint, corsPolicyName)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testFactories(endpoint),
-		CheckDestroy:             checkPolicyDestroyed(endpoint),
+		CheckDestroy:             checkPolicyDestroyed(endpoint, corsPolicyName),
 		Steps: []resource.TestStep{
 			{
-				Config: `
-resource "agentgateway_llm_policy" "test" {
-  name = "cors"
-  spec = jsonencode({
-    allowOrigins = ["https://example.com"]
-  })
-}`,
+				Config: corsConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("agentgateway_llm_policy.test", "id", "cors"),
-					resource.TestCheckResourceAttrSet("agentgateway_llm_policy.test", "revision"),
+					resource.TestCheckResourceAttr(resourceAddress, "id", corsPolicyName),
+					resource.TestCheckResourceAttrSet(resourceAddress, "revision"),
+					checkSpec(`{"allowOrigins":["https://example.com"]}`),
 				),
 			},
 			{
 				// Policy bodies are stored verbatim, so the import must match the
 				// managed state exactly; there is nothing to ignore.
-				ResourceName:      "agentgateway_llm_policy.test",
+				ResourceName:      resourceAddress,
 				ImportState:       true,
-				ImportStateId:     "cors",
+				ImportStateId:     corsPolicyName,
 				ImportStateVerify: true,
 			},
 			{
-				Config: `
-resource "agentgateway_llm_policy" "test" {
-  name = "cors"
-  spec = jsonencode({
-    allowOrigins = ["https://example.com", "https://app.example.com"]
-    allowMethods = ["GET", "POST"]
-  })
-}`,
+				Config: corsUpdatedConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("agentgateway_llm_policy.test", "id", "cors"),
+					resource.TestCheckResourceAttr(resourceAddress, "id", corsPolicyName),
+					checkSpec(`{"allowOrigins":["https://example.com","https://app.example.com"],"allowMethods":["GET","POST"]}`),
 				),
 			},
 		},
+	})
+}
+
+// TestAccLLMPolicyAPIKeyRoundTrip pins C23: the gateway materialises keys but
+// must not echo them into the stored policy body. If a gateway does echo
+// `keys`, the import verification fails here, and the resource would otherwise
+// both plan a diff and reject its own read-back (C11).
+func TestAccLLMPolicyAPIKeyRoundTrip(t *testing.T) {
+	acctest.PreCheck(t)
+	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
+	clearPolicy(t, endpoint, apiKeyPolicyName)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testFactories(endpoint),
+		CheckDestroy:             checkPolicyDestroyed(endpoint, apiKeyPolicyName),
+		Steps: []resource.TestStep{
+			{
+				Config: apiKeyConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceAddress, "id", apiKeyPolicyName),
+					checkSpec(apiKeyBody),
+				),
+			},
+			{
+				ResourceName:      resourceAddress,
+				ImportState:       true,
+				ImportStateId:     apiKeyPolicyName,
+				ImportStateVerify: true,
+			},
+			{
+				// The imported state must plan no change: the body round-trips
+				// without an injected keys list.
+				Config: apiKeyConfig,
+				Check:  checkSpec(apiKeyBody),
+			},
+		},
+	})
+}
+
+// checkSpec asserts the stored policy body is semantically equal to want, which
+// also pins the absence of any key the gateway might have injected.
+func checkSpec(want string) resource.TestCheckFunc {
+	return resource.TestCheckResourceAttrWith(resourceAddress, "spec", func(got string) error {
+		var gotValue, wantValue any
+		if err := json.Unmarshal([]byte(got), &gotValue); err != nil {
+			return fmt.Errorf("spec is not valid JSON: %s", got)
+		}
+		if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+			return fmt.Errorf("expected spec is not valid JSON: %s", want)
+		}
+		if !reflect.DeepEqual(gotValue, wantValue) {
+			return fmt.Errorf("spec = %s, want %s", got, want)
+		}
+		return nil
 	})
 }
 
@@ -79,8 +165,54 @@ func testFactories(endpoint string) map[string]func() (tfprotov6.ProviderServer,
 	}
 }
 
-// checkPolicyDestroyed fails when a policy survives destroy.
-func checkPolicyDestroyed(endpoint string) resource.TestCheckFunc {
+// newAcceptanceClient returns a client for the gateway under test.
+func newAcceptanceClient(t *testing.T, endpoint string) client.Client {
+	t.Helper()
+
+	c, err := client.New(client.Config{
+		BaseURL:    endpoint,
+		HTTPClient: http.DefaultClient,
+		UserAgent:  "terraform-provider-agentgateway/acctest",
+	})
+	if err != nil {
+		t.Fatalf("creating acceptance client: %v", err)
+	}
+	return c
+}
+
+// clearPolicy removes a policy an aborted run left behind, so a rerun can
+// create the key again. The key itself is fixed because policy names are
+// enum-constrained, so cleanup is the rerun-safety mechanism. A cleanup failure
+// must never be silent.
+func clearPolicy(t *testing.T, endpoint, name string) {
+	t.Helper()
+
+	c := newAcceptanceClient(t, endpoint)
+	ctx := context.Background()
+
+	list, err := c.List(ctx, configresource.KindLLMPolicy)
+	if err != nil {
+		t.Fatalf("listing llm policies before the run: %v", err)
+	}
+
+	found := false
+	for _, res := range list {
+		if res.ID == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
+	if err := c.Delete(ctx, configresource.KindLLMPolicy, name); err != nil && !errors.Is(err, client.ErrNotFound) {
+		t.Fatalf("clearing leftover llm policy %q: %v", name, err)
+	}
+}
+
+// checkPolicyDestroyed fails when one of the policies survives destroy.
+func checkPolicyDestroyed(endpoint string, names ...string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
 		c, err := client.New(client.Config{
 			BaseURL:    endpoint,
@@ -96,8 +228,10 @@ func checkPolicyDestroyed(endpoint string) resource.TestCheckFunc {
 			return fmt.Errorf("listing llm policies: %w", err)
 		}
 		for _, res := range list {
-			if res.ID == "cors" {
-				return fmt.Errorf("llm policy %q still exists after destroy", res.ID)
+			for _, name := range names {
+				if res.ID == name {
+					return fmt.Errorf("llm policy %q still exists after destroy", res.ID)
+				}
 			}
 		}
 		return nil

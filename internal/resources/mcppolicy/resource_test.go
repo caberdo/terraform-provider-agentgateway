@@ -40,13 +40,7 @@ func TestMCPPolicySchema(t *testing.T) {
 	if !name.Required || name.Optional || name.Computed {
 		t.Errorf("name must be required-only, got required=%v optional=%v computed=%v", name.Required, name.Optional, name.Computed)
 	}
-	if len(name.Validators) != 1 {
-		t.Fatalf("expected exactly one enum validator on name, got %d", len(name.Validators))
-	}
 	assertNameEnum(t, name.Validators, "mcpAuthentication", "guardrails")
-	if len(name.PlanModifiers) != 1 {
-		t.Fatalf("expected exactly one plan modifier on name (RequiresReplace), got %d", len(name.PlanModifiers))
-	}
 	assertNameReplaces(t, s, name.PlanModifiers, "cors", "mcpAuthentication")
 
 	spec, ok := s.Attributes["spec"].(schema.StringAttribute)
@@ -176,6 +170,12 @@ resource "agentgateway_mcp_policy" "test" {
 					},
 				),
 			},
+			{
+				ResourceName:      "agentgateway_mcp_policy.test",
+				ImportState:       true,
+				ImportStateId:     "localRateLimit",
+				ImportStateVerify: true,
+			},
 		},
 	})
 }
@@ -244,48 +244,65 @@ func policyBody(t *testing.T, server *agentgatewaytest.Server, id string) json.R
 	return nil
 }
 
-// assertNameEnum runs the name validator against one accepted and one rejected
-// value, proving the resource wires the mcp.policy enum rather than another one.
+// assertNameEnum asserts that the name validators accept one enum value and
+// reject another. It checks containment rather than cardinality, so an extra
+// shared validator does not break this test.
 func assertNameEnum(t *testing.T, validators []validator.String, accepted, rejected string) {
 	t.Helper()
 
-	for _, tc := range []struct {
-		value   string
-		wantErr bool
-	}{
-		{accepted, false},
-		{rejected, true},
-	} {
-		var resp validator.StringResponse
-		validators[0].ValidateString(context.Background(), validator.StringRequest{
-			Path:        path.Root("name"),
-			ConfigValue: types.StringValue(tc.value),
-		}, &resp)
-		if resp.Diagnostics.HasError() != tc.wantErr {
-			t.Errorf("name = %q: diagnostics = %v, wantErr %v", tc.value, resp.Diagnostics, tc.wantErr)
-		}
+	if len(validators) == 0 {
+		t.Fatal("name has no validators; expected an enum validator")
+	}
+	if detail := validateName(validators, accepted); detail != "" {
+		t.Errorf("name = %q was rejected: %s", accepted, detail)
+	}
+	if detail := validateName(validators, rejected); detail == "" {
+		t.Errorf("name = %q was accepted; expected the enum validator to reject it", rejected)
 	}
 }
 
+// validateName runs every validator and returns the first diagnostic detail, or
+// "" when they all accept the value.
+func validateName(validators []validator.String, value string) string {
+	for _, v := range validators {
+		var resp validator.StringResponse
+		v.ValidateString(context.Background(), validator.StringRequest{
+			Path:        path.Root("name"),
+			ConfigValue: types.StringValue(value),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			return resp.Diagnostics.Errors()[0].Detail()
+		}
+	}
+	return ""
+}
+
 // assertNameReplaces proves a changed name forces replacement: a policy cannot
-// be renamed because its name is its id (spec §7.0).
+// be renamed because its name is its id (spec §7.0). It checks containment
+// rather than cardinality, so an extra plan modifier does not break this test.
 func assertNameReplaces(t *testing.T, s schema.Schema, modifiers []planmodifier.String, oldName, newName string) {
 	t.Helper()
 
-	var resp planmodifier.StringResponse
-	modifiers[0].PlanModifyString(context.Background(), planmodifier.StringRequest{
-		State:      tfsdk.State{Schema: s, Raw: policyRaw(oldName)},
-		Plan:       tfsdk.Plan{Schema: s, Raw: policyRaw(newName)},
-		StateValue: types.StringValue(oldName),
-		PlanValue:  types.StringValue(newName),
-		Path:       path.Root("name"),
-	}, &resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("plan modifier diagnostics: %v", resp.Diagnostics)
+	if len(modifiers) == 0 {
+		t.Fatal("name has no plan modifiers; expected RequiresReplace")
 	}
-	if !resp.RequiresReplace {
-		t.Errorf("changing name from %q to %q did not require replacement", oldName, newName)
+	for _, m := range modifiers {
+		var resp planmodifier.StringResponse
+		m.PlanModifyString(context.Background(), planmodifier.StringRequest{
+			State:      tfsdk.State{Schema: s, Raw: policyRaw(oldName)},
+			Plan:       tfsdk.Plan{Schema: s, Raw: policyRaw(newName)},
+			StateValue: types.StringValue(oldName),
+			PlanValue:  types.StringValue(newName),
+			Path:       path.Root("name"),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("plan modifier diagnostics: %v", resp.Diagnostics)
+		}
+		if resp.RequiresReplace {
+			return
+		}
 	}
+	t.Errorf("changing name from %q to %q did not require replacement", oldName, newName)
 }
 
 // policyRaw is a complete policy object with the given name, used to give the
