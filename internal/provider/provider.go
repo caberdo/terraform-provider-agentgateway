@@ -5,7 +5,31 @@ import (
 	"fmt"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/client"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/configresources"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/effectiveconfig"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/llmapikeys"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/llmmodels"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/llmproviders"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/mcptargets"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/runtime"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/trafficgateways"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/datasources/trafficroutes"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/providerdata"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/frontendpolicy"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmapikey"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmmodel"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmpolicy"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmprovider"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmsettings"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/llmvirtualmodel"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/mcppolicy"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/mcpsettings"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/mcptarget"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/modelcatalog"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/trafficgateway"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/trafficroute"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/traffictcproute"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/resources/uipolicy"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -188,11 +212,37 @@ func (p *AgentgatewayProvider) Configure(ctx context.Context, req provider.Confi
 }
 
 func (p *AgentgatewayProvider) Resources(context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource{
+		llmprovider.New,
+		llmmodel.New,
+		llmvirtualmodel.New,
+		llmapikey.New,
+		llmpolicy.New,
+		llmsettings.New,
+		mcptarget.New,
+		mcppolicy.New,
+		mcpsettings.New,
+		trafficgateway.New,
+		trafficroute.New,
+		traffictcproute.New,
+		uipolicy.New,
+		frontendpolicy.New,
+		modelcatalog.New,
+	}
 }
 
 func (p *AgentgatewayProvider) DataSources(context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		runtime.New,
+		llmmodels.New,
+		llmproviders.New,
+		llmapikeys.New,
+		mcptargets.New,
+		trafficgateways.New,
+		trafficroutes.New,
+		effectiveconfig.New,
+		configresources.New,
+	}
 }
 
 func versionWarning(runtimeVersion string) string {
