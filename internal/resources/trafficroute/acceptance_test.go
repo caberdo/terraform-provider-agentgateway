@@ -51,8 +51,7 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(accRouteType+".test", "matches.0.method", "GET"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.#", "1"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.weight", "1"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.host.0.host", "127.0.0.1"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.host.0.port", "8080"),
+					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.host", "127.0.0.1:8080"),
 				),
 			},
 			{
@@ -72,7 +71,7 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(accRouteType+".test", "matches.0.path.0.exact", "/v1/health"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.#", "1"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.weight", "2"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","namespace":"default"}`),
+					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","port":8080}`),
 				),
 			},
 		},
@@ -110,7 +109,7 @@ func TestTrafficRouteCRUD(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(accRouteType+".test", "matches.0.path.0.exact", "/v1/health"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.weight", "2"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","namespace":"default"}`),
+					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","port":8080}`),
 				),
 			},
 		},
@@ -143,10 +142,7 @@ resource "agentgateway_traffic_route" "test" {
   }
 
   backends {
-    host {
-      host = "127.0.0.1"
-      port = 8080
-    }
+    host = "127.0.0.1:8080"
   }
 }
 `
@@ -169,8 +165,8 @@ resource "agentgateway_traffic_route" "test" {
     weight = 2
 
     service_json = jsonencode({
-      name      = "svc"
-      namespace = "default"
+      name = "svc"
+      port = 8080
     })
   }
 }

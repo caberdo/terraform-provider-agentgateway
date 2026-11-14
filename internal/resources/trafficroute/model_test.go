@@ -103,29 +103,29 @@ func TestTrafficRouteValue(t *testing.T) {
 			name: "backend host",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
-					Host: []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}},
+					Host: types.StringValue("127.0.0.1:8080"),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":1,"host":{"host":"127.0.0.1","port":8080}}]}`,
+			want: `{"name":"r","backends":[{"weight":1,"host":"127.0.0.1:8080"}]}`,
 		},
 		{
 			name: "backend reference with weight",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
 					Weight:  types.Int64Value(2),
-					Backend: []backendRefModel{{Name: types.StringValue("svc"), Namespace: types.StringValue("default")}},
+					Backend: types.StringValue("svc"),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":2,"backend":{"name":"svc","namespace":"default"}}]}`,
+			want: `{"name":"r","backends":[{"weight":2,"backend":"svc"}]}`,
 		},
 		{
 			name: "service json backend",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
-					Service: jsonValue(`{"name":"svc","namespace":"default","port":8080}`),
+					Service: jsonValue(`{"name":"svc","port":8080}`),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":1,"service":{"name":"svc","namespace":"default","port":8080}}]}`,
+			want: `{"name":"r","backends":[{"weight":1,"service":{"name":"svc","port":8080}}]}`,
 		},
 		{
 			name: "mcp json backend",
@@ -194,7 +194,7 @@ func TestTrafficRouteBackendWeightDefaultsToOne(t *testing.T) {
 	m := newModel()
 	m.Name = types.StringValue("r")
 	m.Backends = []backendModel{{
-		Host: []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}},
+		Host: types.StringValue("127.0.0.1:8080"),
 	}}
 
 	var diags diag.Diagnostics
@@ -202,7 +202,7 @@ func TestTrafficRouteBackendWeightDefaultsToOne(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("Value() returned diagnostics: %v", diags)
 	}
-	want := `{"name":"r","backends":[{"weight":1,"host":{"host":"127.0.0.1","port":8080}}]}`
+	want := `{"name":"r","backends":[{"weight":1,"host":"127.0.0.1:8080"}]}`
 	if string(got) != want {
 		t.Errorf("Value() = %s, want %s", got, want)
 	}
@@ -226,12 +226,12 @@ func TestTrafficRouteBackendJSONRejectsTypedKeys(t *testing.T) {
 		{
 			name:   "host",
 			json:   `{"host":{"host":"127.0.0.1","port":8080}}`,
-			detail: "host must be set as the sibling host block, not inside json",
+			detail: "host must be set as the sibling host attribute, not inside json",
 		},
 		{
 			name:   "backend",
 			json:   `{"backend":{"name":"svc"}}`,
-			detail: "backend must be set as the sibling backend block, not inside json",
+			detail: "backend must be set as the sibling backend attribute, not inside json",
 		},
 	}
 
@@ -384,13 +384,13 @@ func TestTrafficRouteBackendVariantIsExclusive(t *testing.T) {
 		{
 			name: "host and service",
 			first: func(b *backendModel) {
-				b.Host = []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}}
+				b.Host = types.StringValue("127.0.0.1:8080")
 			},
 			second: func(b *backendModel) { b.Service = jsonValue(`{"name":"svc"}`) },
 		},
 		{
 			name:   "backend reference and generic json",
-			first:  func(b *backendModel) { b.Backend = []backendRefModel{{Name: types.StringValue("svc")}} },
+			first:  func(b *backendModel) { b.Backend = types.StringValue("svc") },
 			second: func(b *backendModel) { b.JSON = jsonValue(`{"internal":{}}`) },
 		},
 		{

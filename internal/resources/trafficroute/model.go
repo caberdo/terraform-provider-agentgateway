@@ -49,24 +49,12 @@ type queryModel struct {
 // backendModel is one destination of a route. Exactly one variant may be set.
 type backendModel struct {
 	Weight  types.Int64          `tfsdk:"weight"`
-	Host    []hostModel          `tfsdk:"host"`
-	Backend []backendRefModel    `tfsdk:"backend"`
+	Host    types.String         `tfsdk:"host"`
+	Backend types.String         `tfsdk:"backend"`
 	Service jsontypes.Normalized `tfsdk:"service_json"`
 	MCP     jsontypes.Normalized `tfsdk:"mcp_json"`
 	AI      jsontypes.Normalized `tfsdk:"ai_json"`
 	JSON    jsontypes.Normalized `tfsdk:"json"`
-}
-
-// hostModel is a direct host backend.
-type hostModel struct {
-	Host types.String `tfsdk:"host"`
-	Port types.Int64  `tfsdk:"port"`
-}
-
-// backendRefModel references another config resource.
-type backendRefModel struct {
-	Name      types.String `tfsdk:"name"`
-	Namespace types.String `tfsdk:"namespace"`
 }
 
 // model is the Terraform representation of a traffic.route resource.
@@ -143,24 +131,12 @@ type queryPayload struct {
 // backendPayload is the value object for a known backend variant. A generic
 // json backend is merged into this object at the top level instead.
 type backendPayload struct {
-	Weight  *int64             `json:"weight,omitempty"`
-	Host    *hostPayload       `json:"host,omitempty"`
-	Backend *backendRefPayload `json:"backend,omitempty"`
-	Service json.RawMessage    `json:"service,omitempty"`
-	MCP     json.RawMessage    `json:"mcp,omitempty"`
-	AI      json.RawMessage    `json:"ai,omitempty"`
-}
-
-// hostPayload is the value object for a direct host backend.
-type hostPayload struct {
-	Host string `json:"host"`
-	Port int64  `json:"port"`
-}
-
-// backendRefPayload is the value object for a backend reference.
-type backendRefPayload struct {
-	Name      string  `json:"name"`
-	Namespace *string `json:"namespace,omitempty"`
+	Weight  *int64          `json:"weight,omitempty"`
+	Host    *string         `json:"host,omitempty"`
+	Backend *string         `json:"backend,omitempty"`
+	Service json.RawMessage `json:"service,omitempty"`
+	MCP     json.RawMessage `json:"mcp,omitempty"`
+	AI      json.RawMessage `json:"ai,omitempty"`
 }
 
 // routeValue is the wire representation decoded from the API.
@@ -202,26 +178,6 @@ type queryValue struct {
 	Name  *string `json:"name"`
 	Exact *string `json:"exact"`
 	Regex *string `json:"regex"`
-}
-
-// backendValue is the known part of a backend. Unknown keys (aws, dynamic,
-// internal, routeGroup) are collected into the generic json variant.
-type backendValue struct {
-	Weight  *int64           `json:"weight"`
-	Host    *hostValue       `json:"host"`
-	Backend *backendRefValue `json:"backend"`
-}
-
-// hostValue is the wire representation of a direct host backend.
-type hostValue struct {
-	Host *string `json:"host"`
-	Port *int64  `json:"port"`
-}
-
-// backendRefValue is the wire representation of a backend reference.
-type backendRefValue struct {
-	Name      *string `json:"name"`
-	Namespace *string `json:"namespace"`
 }
 
 // Kind returns the config resource kind.
@@ -346,29 +302,7 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 	for i, backend := range m.Backends {
 		backendPath := path.Root("backends").AtListIndex(i)
 
-		if len(backend.Host) > 1 {
-			diags.AddAttributeError(
-				backendPath.AtName("host"),
-				"Invalid traffic route backend",
-				"at most one host block may be set per backend",
-			)
-		}
-		if len(backend.Backend) > 1 {
-			diags.AddAttributeError(
-				backendPath.AtName("backend"),
-				"Invalid traffic route backend",
-				"at most one backend block may be set per backend",
-			)
-		}
-
-		variants := countSet(backend.Service, backend.MCP, backend.AI, backend.JSON)
-		if len(backend.Host) > 0 {
-			variants++
-		}
-		if len(backend.Backend) > 0 {
-			variants++
-		}
-		if variants > 1 {
+		if countSet(backend.Host, backend.Backend, backend.Service, backend.MCP, backend.AI, backend.JSON) > 1 {
 			diags.AddAttributeError(
 				backendPath,
 				"Invalid traffic route backend",
@@ -384,21 +318,11 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 
 		payload := backendPayload{
 			Weight:  weight,
+			Host:    stringPointer(backend.Host),
+			Backend: stringPointer(backend.Backend),
 			Service: rawJSON(backend.Service),
 			MCP:     rawJSON(backend.MCP),
 			AI:      rawJSON(backend.AI),
-		}
-		if len(backend.Host) == 1 {
-			payload.Host = &hostPayload{
-				Host: backend.Host[0].Host.ValueString(),
-				Port: backend.Host[0].Port.ValueInt64(),
-			}
-		}
-		if len(backend.Backend) == 1 {
-			payload.Backend = &backendRefPayload{
-				Name:      backend.Backend[0].Name.ValueString(),
-				Namespace: stringPointer(backend.Backend[0].Namespace),
-			}
 		}
 
 		if isSet(backend.JSON) {
@@ -458,8 +382,8 @@ func (e *backendJSONKeyError) Error() string { return e.key }
 // into the typed attribute on read, so the json object would never round-trip.
 var backendJSONKeyMessages = map[string]string{
 	"weight":  "weight must be set as the sibling weight attribute, not inside json",
-	"host":    "host must be set as the sibling host block, not inside json",
-	"backend": "backend must be set as the sibling backend block, not inside json",
+	"host":    "host must be set as the sibling host attribute, not inside json",
+	"backend": "backend must be set as the sibling backend attribute, not inside json",
 	"service": "service must be set as the sibling service_json attribute, not inside json",
 	"mcp":     "mcp must be set as the sibling mcp_json attribute, not inside json",
 	"ai":      "ai must be set as the sibling ai_json attribute, not inside json",
@@ -583,34 +507,21 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 		return backendModel{}, err
 	}
 
-	var decoded backendValue
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return backendModel{}, err
-	}
-
 	backend := backendModel{}
-	if decoded.Weight != nil {
-		backend.Weight = types.Int64Value(*decoded.Weight)
+	if weightRaw, ok := body["weight"]; ok && !isJSONNull(weightRaw) {
+		var weight int64
+		if err := json.Unmarshal(weightRaw, &weight); err != nil {
+			return backendModel{}, err
+		}
+		backend.Weight = types.Int64Value(weight)
 	}
-	if decoded.Host != nil {
-		host := hostModel{}
-		if decoded.Host.Host != nil {
-			host.Host = types.StringValue(*decoded.Host.Host)
-		}
-		if decoded.Host.Port != nil {
-			host.Port = types.Int64Value(*decoded.Host.Port)
-		}
-		backend.Host = []hostModel{host}
+	// host and backend are bare strings upstream. The old object form is
+	// tolerated but treated as absent instead of failing the whole read.
+	if host, ok := bareString(body["host"]); ok {
+		backend.Host = types.StringValue(host)
 	}
-	if decoded.Backend != nil {
-		ref := backendRefModel{}
-		if decoded.Backend.Name != nil {
-			ref.Name = types.StringValue(*decoded.Backend.Name)
-		}
-		if decoded.Backend.Namespace != nil {
-			ref.Namespace = types.StringValue(*decoded.Backend.Namespace)
-		}
-		backend.Backend = []backendRefModel{ref}
+	if name, ok := bareString(body["backend"]); ok {
+		backend.Backend = types.StringValue(name)
 	}
 
 	backend.Service = normalizedFromRaw(body["service"])
@@ -626,8 +537,10 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 		extras[key] = value
 	}
 	// A backend with no typed variant is the generic json variant, including an
-	// empty object: json = {} must read back as {} rather than null.
-	typedVariant := decoded.Host != nil || decoded.Backend != nil ||
+	// empty object: json = {} must read back as {} rather than null. A known key
+	// in an unexpected shape (the old host/backend object form) still counts as
+	// typed, so its data is not re-labelled as generic json.
+	typedVariant := presentJSON(body, "host") || presentJSON(body, "backend") ||
 		isSet(backend.Service) || isSet(backend.MCP) || isSet(backend.AI)
 	if len(extras) > 0 || !typedVariant {
 		encoded, err := json.Marshal(extras)
@@ -698,11 +611,39 @@ func normalizedFromRaw(raw json.RawMessage) jsontypes.Normalized {
 }
 
 func normalizedFromRawOK(raw json.RawMessage) (jsontypes.Normalized, bool) {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+	if isJSONNull(raw) {
 		return jsontypes.Normalized{}, false
 	}
+	trimmed := bytes.TrimSpace(raw)
 	return jsontypes.NewNormalizedValue(string(trimmed)), true
+}
+
+// isJSONNull reports whether raw is absent or an explicit JSON null.
+func isJSONNull(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
+}
+
+// presentJSON reports whether a key is present and not null, regardless of the
+// shape of its value.
+func presentJSON(body map[string]json.RawMessage, key string) bool {
+	raw, ok := body[key]
+	return ok && !isJSONNull(raw)
+}
+
+// bareString returns a bare JSON string value. Anything that is not a JSON
+// string, including the legacy object form of host and backend, is reported as
+// absent instead of failing the read.
+func bareString(raw json.RawMessage) (string, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '"' {
+		return "", false
+	}
+	var value string
+	if err := json.Unmarshal(trimmed, &value); err != nil {
+		return "", false
+	}
+	return value, true
 }
 
 // rawJSON returns the raw JSON for a normalized value, or nil when unset.

@@ -197,10 +197,24 @@ func resourceSchema() schema.Schema {
 								int64validator.AtLeast(0),
 							},
 						},
+						"host": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "Direct host backend as a bare string, for example `example.com:8000` or a URI such as `http://127.0.0.1:8080`. Exactly one backend variant may be set.",
+							Validators: []validator.String{
+								stringvalidator.ExactlyOneOf(backendOptions...),
+							},
+						},
+						"backend": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "Name of a backend to route to, as a bare string. Exactly one backend variant may be set.",
+							Validators: []validator.String{
+								stringvalidator.ExactlyOneOf(backendOptions...),
+							},
+						},
 						"service_json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Service backend as JSON. Exactly one backend variant may be set.",
+							MarkdownDescription: "Service backend as JSON, `{name, port}`. Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
@@ -227,49 +241,6 @@ func resourceSchema() schema.Schema {
 							MarkdownDescription: "Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
-							},
-						},
-					},
-					Blocks: map[string]schema.Block{
-						"host": schema.ListNestedBlock{
-							MarkdownDescription: "Direct host backend.",
-							Validators: []validator.List{
-								listvalidator.SizeAtMost(1),
-								listvalidator.ExactlyOneOf(backendOptions...),
-							},
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"host": schema.StringAttribute{
-										Required:            true,
-										MarkdownDescription: "Hostname or IP address.",
-									},
-									"port": schema.Int64Attribute{
-										Required:            true,
-										MarkdownDescription: "TCP port.",
-										Validators: []validator.Int64{
-											int64validator.Between(0, 65535),
-										},
-									},
-								},
-							},
-						},
-						"backend": schema.ListNestedBlock{
-							MarkdownDescription: "Reference to another config resource.",
-							Validators: []validator.List{
-								listvalidator.SizeAtMost(1),
-								listvalidator.ExactlyOneOf(backendOptions...),
-							},
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"name": schema.StringAttribute{
-										Required:            true,
-										MarkdownDescription: "Name of the referenced resource.",
-									},
-									"namespace": schema.StringAttribute{
-										Optional:            true,
-										MarkdownDescription: "Namespace of the referenced resource.",
-									},
-								},
 							},
 						},
 					},
