@@ -4,9 +4,25 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
+
+// TestTrafficRoutePoliciesAreSensitive pins that the route-level policies_json
+// is sensitive: it carries the same credential families as the gateway-level
+// policies (basicAuth, apiKey, extAuthz, JWT/OIDC).
+func TestTrafficRoutePoliciesAreSensitive(t *testing.T) {
+	t.Parallel()
+
+	attribute, ok := resourceSchema().Attributes["policies_json"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal(`"policies_json" is not a string attribute`)
+	}
+	if !attribute.Sensitive {
+		t.Fatal(`"policies_json" is not marked Sensitive; route policies carry credentials`)
+	}
+}
 
 // nullAttributes seeds every attribute of an object type with null.
 func nullAttributes(object tftypes.Object) map[string]tftypes.Value {

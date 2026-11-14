@@ -69,8 +69,12 @@ func resourceSchema() schema.Schema {
 				MarkdownDescription: "Hostnames served by this route. Wildcards are allowed; unset serves all hostnames.",
 			},
 			"policies_json": schema.StringAttribute{
-				Optional:            true,
-				CustomType:          jsontypes.NormalizedType{},
+				Optional:   true,
+				CustomType: jsontypes.NormalizedType{},
+				// Route-level policies carry the same credential families as
+				// the gateway-level ones (basicAuth, apiKey, extAuthz,
+				// JWT/OIDC), so the whole attribute is marked sensitive.
+				Sensitive:           true,
 				MarkdownDescription: "Route-level policies as JSON.",
 			},
 		},

@@ -152,7 +152,7 @@ L4 drives Terraform through `terraform-plugin-testing`, which needs a
 `terraform` binary on `PATH` (or `TF_ACC_TERRAFORM_PATH`, or
 `TF_ACC_TERRAFORM_VERSION` to fetch a release). The compose `test` service has
 no Terraform CLI, so the authoritative L4 run is the host
-`TF_ACC=1 go test -p 1 ./internal/...` with the three endpoint variables; see
+`TF_ACC=1 go test -p 1 ./internal/...` with the four endpoint variables; see
 `CONTRIBUTING.md`.
 
 The acceptance environment runs four gateway services, because one hybrid

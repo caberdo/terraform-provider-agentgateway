@@ -54,7 +54,7 @@ output "api_route_backends" {
 
 Read-Only:
 
-- `backends` (List of String) Backends of the route, each as its raw JSON object. Use `jsondecode` to inspect one.
+- `backends` (List of String, Sensitive) Backends of the route, each as its raw JSON object. Use `jsondecode` to inspect one.
 - `gateways` (List of String) Gateways the route is attached to.
 - `hostnames` (List of String) Hostnames the route matches.
 - `name` (String) Route name, which is also the resource id.

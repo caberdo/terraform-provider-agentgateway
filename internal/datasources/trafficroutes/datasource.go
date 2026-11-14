@@ -102,8 +102,12 @@ func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 							MarkdownDescription: "Hostnames the route matches.",
 						},
 						"backends": schema.ListAttribute{
-							Computed:            true,
-							ElementType:         jsontypes.NormalizedType{},
+							Computed:    true,
+							ElementType: jsontypes.NormalizedType{},
+							// Backends expose their raw `policies`, which carry
+							// TLS material and authorization rules, so the
+							// whole list is marked sensitive.
+							Sensitive:           true,
 							MarkdownDescription: "Backends of the route, each as its raw JSON object. Use `jsondecode` to inspect one.",
 						},
 					},

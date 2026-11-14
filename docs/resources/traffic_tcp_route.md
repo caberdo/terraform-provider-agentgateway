@@ -87,7 +87,7 @@ resource "agentgateway_traffic_tcp_route" "replicated" {
 - `gateways` (List of String) Gateways that serve this route, as `<gateway>` or `<gateway>/<listener>`. The server defaults to `default`.
 - `hostnames` (List of String) Hostnames served by this route. Wildcards are allowed; unset serves all hostnames.
 - `namespace` (String) Namespace of the route.
-- `policies_json` (String) Route-level policies as JSON.
+- `policies_json` (String, Sensitive) Route-level policies as JSON.
 - `rule_name` (String) Rule name used by authorization policies.
 
 ### Read-Only

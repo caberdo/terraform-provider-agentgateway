@@ -78,7 +78,7 @@ resource "agentgateway_llm_model" "claude_sonnet" {
 - `base_url` (String) Upstream base URL (`params.baseUrl`).
 - `custom_provider_json` (String, Sensitive) Custom provider as JSON, `{model, providerOverride, formats}`. Exactly one of `provider_name`, `provider_reference` or `custom_provider_json` must be set.
 - `defaults_json` (String, Sensitive) Default request payload values (`defaults`).
-- `display_name` (String) Label shown in the UI in place of `name`. Does not affect matching.
+- `display_name` (String) Terraform-side label only; agentgateway v1.7.0 has no `displayName` for models, so this value stays in state and is not sent to the gateway.
 - `final_transformation_json` (String, Sensitive) CEL transformations applied after conversion to the provider format (`finalTransformation`).
 - `guardrails_json` (String, Sensitive) Guardrails applied to requests or responses (`guardrails`).
 - `health_json` (String, Sensitive) Outlier detection for this model backend (`health`).

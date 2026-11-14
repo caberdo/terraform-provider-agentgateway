@@ -1,13 +1,41 @@
 package trafficroutes
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/agentgatewaytest"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// TestTrafficRoutesBackendsAreSensitive pins that the backends listing is
+// sensitive: each backend is raw JSON and exposes its `policies`, which carry
+// TLS material and authorization rules.
+func TestTrafficRoutesBackendsAreSensitive(t *testing.T) {
+	t.Parallel()
+
+	var resp datasource.SchemaResponse
+	New().Schema(context.Background(), datasource.SchemaRequest{}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Schema() returned diagnostics: %v", resp.Diagnostics)
+	}
+
+	routes, ok := resp.Schema.Attributes["routes"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatal(`"routes" is not a list nested attribute`)
+	}
+	attribute, ok := routes.NestedObject.Attributes["backends"]
+	if !ok {
+		t.Fatal(`"routes" has no "backends" attribute`)
+	}
+	if !attribute.IsSensitive() {
+		t.Fatal(`"backends" is not marked Sensitive; backend policies carry credentials`)
+	}
+}
 
 // TestFlattenRouteOmittedCollectionsAreEmpty pins that omitted arrays become
 // empty collections, not null: a null list cannot be iterated in Terraform,

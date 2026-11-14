@@ -46,7 +46,7 @@ func newSchema() schema.Schema {
 			},
 			"display_name": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Label shown in the UI in place of `name`. Does not affect matching.",
+				MarkdownDescription: "Terraform-side label only; agentgateway v1.7.0 has no `displayName` for models, so this value stays in state and is not sent to the gateway.",
 			},
 			"visibility": schema.StringAttribute{
 				Optional:            true,

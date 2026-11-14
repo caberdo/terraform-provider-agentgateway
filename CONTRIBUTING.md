@@ -69,8 +69,8 @@ CLI, so a `terraform` binary must be on the `PATH` of the process that runs
 bare `golang` image: it ships no Terraform CLI and cannot install one when the
 container has no network.
 
-The authoritative run is therefore on the host, against the three gateways
-started by compose:
+The authoritative run is therefore on the host, against the four gateways
+started by compose — `hybrid`, `readonly`, `fileowned` and `filemode`:
 
 ```sh
 TF_ACC=1 \
