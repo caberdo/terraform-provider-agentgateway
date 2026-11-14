@@ -93,21 +93,7 @@ func TestTrafficRouteSchemaReflection(t *testing.T) {
 	}
 	backendValues := nullAttributes(backendType)
 	backendValues["weight"] = tftypes.NewValue(tftypes.Number, 2)
-
-	hostListType, ok := backendType.AttributeTypes["host"].(tftypes.List)
-	if !ok {
-		t.Fatalf("host type is %T, want tftypes.List", backendType.AttributeTypes["host"])
-	}
-	hostType, ok := hostListType.ElementType.(tftypes.Object)
-	if !ok {
-		t.Fatalf("host element type is %T, want tftypes.Object", hostListType.ElementType)
-	}
-	hostValues := nullAttributes(hostType)
-	hostValues["host"] = tftypes.NewValue(tftypes.String, "127.0.0.1")
-	hostValues["port"] = tftypes.NewValue(tftypes.Number, 8080)
-	backendValues["host"] = tftypes.NewValue(hostListType, []tftypes.Value{
-		tftypes.NewValue(hostType, hostValues),
-	})
+	backendValues["host"] = tftypes.NewValue(tftypes.String, "127.0.0.1:8080")
 
 	values["backends"] = tftypes.NewValue(backendsType, []tftypes.Value{
 		tftypes.NewValue(backendType, backendValues),
@@ -156,7 +142,7 @@ func TestTrafficRouteSchemaReflection(t *testing.T) {
 	if got := m.Backends[0].Weight.ValueInt64(); got != 2 {
 		t.Errorf("backend Weight = %d, want 2", got)
 	}
-	if len(m.Backends[0].Host) != 1 || m.Backends[0].Host[0].Port.ValueInt64() != 8080 {
-		t.Errorf("backend Host = %+v, want 127.0.0.1:8080", m.Backends[0].Host)
+	if got := m.Backends[0].Host.ValueString(); got != "127.0.0.1:8080" {
+		t.Errorf("backend Host = %q, want 127.0.0.1:8080", got)
 	}
 }

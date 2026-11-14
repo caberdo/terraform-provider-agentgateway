@@ -32,9 +32,9 @@ func TestTrafficRouteSetValue(t *testing.T) {
 				}
 			],
 			"backends": [
-				{"weight": 2, "host": {"host": "127.0.0.1", "port": 8080}},
-				{"weight": 1, "backend": {"name": "svc", "namespace": "default"}},
-				{"weight": 1, "service": {"name": "svc"}},
+				{"weight": 2, "host": "127.0.0.1:8080"},
+				{"weight": 1, "backend": "svc"},
+				{"weight": 1, "service": {"name": "svc", "port": 8080}},
 				{"weight": 1, "mcp": {"targets": []}},
 				{"weight": 1, "ai": {"provider": "openai"}},
 				{"weight": 3, "aws": {"region": "us-east-1"}}
@@ -104,11 +104,11 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		if got := m.Backends[0].Weight.ValueInt64(); got != 2 {
 			t.Errorf("backend[0] Weight = %d, want 2", got)
 		}
-		if len(m.Backends[0].Host) != 1 || m.Backends[0].Host[0].Host.ValueString() != "127.0.0.1" || m.Backends[0].Host[0].Port.ValueInt64() != 8080 {
-			t.Errorf("backend[0] Host = %+v, want 127.0.0.1:8080", m.Backends[0].Host)
+		if got := m.Backends[0].Host.ValueString(); got != "127.0.0.1:8080" {
+			t.Errorf("backend[0] Host = %q, want 127.0.0.1:8080", got)
 		}
-		if len(m.Backends[1].Backend) != 1 || m.Backends[1].Backend[0].Name.ValueString() != "svc" || m.Backends[1].Backend[0].Namespace.ValueString() != "default" {
-			t.Errorf("backend[1] Backend = %+v, want svc/default", m.Backends[1].Backend)
+		if got := m.Backends[1].Backend.ValueString(); got != "svc" {
+			t.Errorf("backend[1] Backend = %q, want svc", got)
 		}
 
 		jsonFields := []struct {
@@ -116,7 +116,7 @@ func TestTrafficRouteSetValue(t *testing.T) {
 			got  jsontypes.Normalized
 			want string
 		}{
-			{"backend[2].Service", m.Backends[2].Service, `{"name": "svc"}`},
+			{"backend[2].Service", m.Backends[2].Service, `{"name": "svc", "port": 8080}`},
 			{"backend[3].MCP", m.Backends[3].MCP, `{"targets": []}`},
 			{"backend[4].AI", m.Backends[4].AI, `{"provider": "openai"}`},
 			{"backend[5].JSON", m.Backends[5].JSON, `{"aws":{"region":"us-east-1"}}`},
@@ -172,7 +172,7 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		m.Namespace = types.StringValue("old-ns")
 		m.RuleName = types.StringValue("old-rule")
 		m.Matches = []matchModel{{Path: []pathModel{{Prefix: types.StringValue("/old")}}}}
-		m.Backends = []backendModel{{Host: []hostModel{{Host: types.StringValue("old"), Port: types.Int64Value(1)}}}}
+		m.Backends = []backendModel{{Host: types.StringValue("old:1")}}
 		m.Policies = jsonValue(`{"cors":{}}`)
 
 		var diags diag.Diagnostics
@@ -208,7 +208,7 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		if len(m.Matches) != 1 || m.Matches[0].Path[0].Prefix.ValueString() != "/old" {
 			t.Errorf("Matches = %+v, want the state value preserved", m.Matches)
 		}
-		if len(m.Backends) != 1 || m.Backends[0].Host[0].Host.ValueString() != "old" {
+		if len(m.Backends) != 1 || m.Backends[0].Host.ValueString() != "old:1" {
 			t.Errorf("Backends = %+v, want the state value preserved", m.Backends)
 		}
 		if got := m.Policies.ValueString(); got != `{"cors":{}}` {
@@ -221,7 +221,7 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		m.Gateways = stringList(t, "default")
 		m.Hostnames = stringList(t, "example.com")
 		m.Matches = []matchModel{{Path: []pathModel{{Prefix: types.StringValue("/old")}}}}
-		m.Backends = []backendModel{{Host: []hostModel{{Host: types.StringValue("old"), Port: types.Int64Value(1)}}}}
+		m.Backends = []backendModel{{Host: types.StringValue("old:1")}}
 
 		var diags diag.Diagnostics
 		m.SetValue(context.Background(), []byte(`{"name":"r","gateways":[],"hostnames":[],"matches":[],"backends":[]}`), &diags)
@@ -260,7 +260,7 @@ func TestTrafficRouteSetValue(t *testing.T) {
 	t.Run("server returned weight is stored", func(t *testing.T) {
 		m := newModel()
 		var diags diag.Diagnostics
-		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":4,"host":{"host":"h","port":1}}]}`), &diags)
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":4,"host":"h:1"}]}`), &diags)
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned diagnostics: %v", diags)
 		}
@@ -269,6 +269,31 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		}
 		if got := m.Backends[0].Weight.ValueInt64(); got != 4 {
 			t.Errorf("Weight = %d, want 4", got)
+		}
+		if got := m.Backends[0].Host.ValueString(); got != "h:1" {
+			t.Errorf("Host = %q, want h:1", got)
+		}
+	})
+
+	t.Run("legacy object host and backend are tolerated as absent", func(t *testing.T) {
+		m := newModel()
+		var diags diag.Diagnostics
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"host":{"host":"h","port":1},"backend":{"name":"svc","namespace":"default"}}]}`), &diags)
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned diagnostics: %v", diags)
+		}
+		if len(m.Backends) != 1 {
+			t.Fatalf("len(Backends) = %d, want 1", len(m.Backends))
+		}
+		if !m.Backends[0].Host.IsNull() {
+			t.Errorf("Host = %q, want null", m.Backends[0].Host.ValueString())
+		}
+		if !m.Backends[0].Backend.IsNull() {
+			t.Errorf("Backend = %q, want null", m.Backends[0].Backend.ValueString())
+		}
+		// A known key in an unexpected shape is not re-labelled as generic json.
+		if !m.Backends[0].JSON.IsNull() {
+			t.Errorf("JSON = %s, want null", m.Backends[0].JSON.ValueString())
 		}
 	})
 

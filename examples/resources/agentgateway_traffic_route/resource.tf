@@ -28,11 +28,7 @@ resource "agentgateway_traffic_route" "api" {
 
   backends {
     weight = 1
-
-    host {
-      host = "127.0.0.1"
-      port = 8080
-    }
+    host   = "127.0.0.1:8080"
   }
 
   policies_json = jsonencode({
@@ -59,9 +55,8 @@ resource "agentgateway_traffic_route" "canary" {
     weight = 80
 
     service_json = jsonencode({
-      name      = "stable"
-      namespace = "default"
-      port      = 8080
+      name = "stable"
+      port = 8080
     })
   }
 
@@ -69,9 +64,25 @@ resource "agentgateway_traffic_route" "canary" {
     weight = 20
 
     service_json = jsonencode({
-      name      = "canary"
-      namespace = "default"
-      port      = 8080
+      name = "canary"
+      port = 8080
     })
+  }
+}
+
+# A route that forwards to another named backend. `backend` is a bare backend
+# name, not an object.
+resource "agentgateway_traffic_route" "tools" {
+  name     = "tools"
+  gateways = ["default"]
+
+  matches {
+    path {
+      prefix = "/tools"
+    }
+  }
+
+  backends {
+    backend = "mcp-tools"
   }
 }
