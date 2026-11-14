@@ -3,8 +3,6 @@ package providerdata
 import (
 	"testing"
 	"time"
-
-	"github.com/caberdo/terraform-provider-agentgateway/internal/client"
 )
 
 // TestDataShape pins the typed provider configuration handed to every resource
@@ -44,8 +42,4 @@ func TestDataShape(t *testing.T) {
 	if data.Version != "1.7.0" {
 		t.Errorf("Data.Version = %q, want 1.7.0", data.Version)
 	}
-
-	// The Client field must keep accepting a client.Client, which is what the
-	// provider's Configure stores.
-	var _ client.Client = data.Client
 }

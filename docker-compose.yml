@@ -1,6 +1,6 @@
 # Acceptance environment for the agentgateway provider (design §10).
 #
-# Three gateways run side by side, because one instance cannot produce every
+# Four gateways run side by side, because one instance cannot produce every
 # negative path the provider has to handle:
 #
 #   hybrid    storage.mode hybrid with a SQLite database. The happy path for
@@ -10,6 +10,9 @@
 #   fileowned storage.mode hybrid, but the config file owns
 #             mcp.statefulMode, so a write that changes the field fails with
 #             409 (C9).
+#   filemode  storage.mode file. The list response omits the singleton kinds,
+#             so the provider rejects llm.settings, mcp.settings and
+#             modelCatalog up front (C24).
 #
 # The admin address has no authentication (C1), so the published ports are
 # bound to the host loopback and never to a routable address.
@@ -61,7 +64,17 @@ services:
       - ./test/acceptance/agentgateway/fileowned.yaml:/etc/agentgateway/config.yaml:ro
       - fileowned-db:/config
 
-  # Runs the acceptance suite against the three gateways above. The suite
+  filemode:
+    image: cr.agentgateway.dev/agentgateway:${AGENTGATEWAY_VERSION:-v1.7.0}
+    command: ["-f", "/etc/agentgateway/config.yaml"]
+    ports:
+      - "127.0.0.1:15003:15003"
+    volumes:
+      # File mode stores everything in the config file, so the mount must be
+      # writable: every write rewrites it (C25).
+      - ./test/acceptance/agentgateway/filemode.yaml:/etc/agentgateway/config.yaml
+
+  # Runs the acceptance suite against the four gateways above. The suite
   # talks to them over the compose network, by service name.
   test:
     # Keep the Go version in step with the go directive in go.mod: the
@@ -76,6 +89,7 @@ services:
       AGENTGATEWAY_ENDPOINT: "http://hybrid:15000"
       AGENTGATEWAY_ENDPOINT_READONLY: "http://readonly:15001"
       AGENTGATEWAY_ENDPOINT_FILEOWNED: "http://fileowned:15002"
+      AGENTGATEWAY_ENDPOINT_FILEMODE: "http://filemode:15003"
       # Set by `make testacc-matrix` and by CI: PreCheck fails when the
       # gateway reports another release than the one under test.
       AGENTGATEWAY_EXPECT_VERSION: "${AGENTGATEWAY_EXPECT_VERSION:-}"
@@ -86,7 +100,7 @@ services:
         set -euo pipefail
         # Compose starts the gateways but does not wait for the admin API to
         # listen, so wait for it before the suite runs.
-        for endpoint in hybrid:15000 readonly:15001 fileowned:15002; do
+        for endpoint in hybrid:15000 readonly:15001 fileowned:15002 filemode:15003; do
           ready=
           for attempt in $$(seq 1 60); do
             if curl -fsS "http://$$endpoint/api/runtime" >/dev/null 2>&1; then
@@ -104,7 +118,7 @@ services:
         status=0
         # The coverage profile lands in the mounted worktree, where
         # `make coverage-merge` and the acceptance job pick it up.
-        # -p 1: the three gateways are shared fixtures with singleton ids
+        # -p 1: the gateways are shared fixtures with singleton ids
         # (llm.settings/default, mcp.settings/default, llm.policy/apiKey), so
         # packages must not run their tests against them in parallel.
         go test -v -count=1 -p 1 -timeout 30m \
@@ -119,6 +133,7 @@ services:
       - hybrid
       - readonly
       - fileowned
+      - filemode
 
 volumes:
   hybrid-db:

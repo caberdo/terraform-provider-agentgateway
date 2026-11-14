@@ -47,10 +47,11 @@ floor on the first line, then the rolling window, ascending, one per line.
   or a subset of the window with
   `AGENTGATEWAY_VERSIONS="v1.7.0 v1.6.0" make testacc-matrix`. The matrix gives
   each version its own compose project and prints a PASS/FAIL summary.
-- The compose environment runs three gateway services: `hybrid` (15000),
-  `readonly` (15001) and `fileowned` (15002). One instance cannot produce
-  every negative path — `403` needs the read-only service and `409
-  file-owned` needs a gateway whose config file owns the field.
+- The compose environment runs four gateway services: `hybrid` (15000),
+  `readonly` (15001), `fileowned` (15002) and `filemode` (15003). One instance
+  cannot produce every negative path — `403` needs the read-only service,
+  `409 file-owned` needs a gateway whose config file owns the field, and the
+  file-mode singleton rejection needs a gateway in `config.storage.mode: file`.
 - `AGENTGATEWAY_EXPECT_VERSION` is set by the matrix and by CI. `PreCheck`
   fails when the gateway reports another version, so a stale image cannot
   masquerade as a green run.
@@ -76,6 +77,7 @@ TF_ACC=1 \
 AGENTGATEWAY_ENDPOINT=http://127.0.0.1:15000 \
 AGENTGATEWAY_ENDPOINT_READONLY=http://127.0.0.1:15001 \
 AGENTGATEWAY_ENDPOINT_FILEOWNED=http://127.0.0.1:15002 \
+AGENTGATEWAY_ENDPOINT_FILEMODE=http://127.0.0.1:15003 \
 go test -count=1 -p 1 -timeout 30m ./internal/...
 ```
 

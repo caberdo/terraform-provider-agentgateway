@@ -155,10 +155,11 @@ no Terraform CLI, so the authoritative L4 run is the host
 `TF_ACC=1 go test -p 1 ./internal/...` with the three endpoint variables; see
 `CONTRIBUTING.md`.
 
-The acceptance environment runs three gateway services, because one hybrid
+The acceptance environment runs four gateway services, because one hybrid
 instance cannot produce every negative path: `hybrid` (port 15000) for the
-happy path, `readonly` (15001) for `403`, and `fileowned` (15002) for the
-`409 file-owned` settings conflict. `AGENTGATEWAY_EXPECT_VERSION` makes
+happy path, `readonly` (15001) for `403`, `fileowned` (15002) for the
+`409 file-owned` settings conflict, and `filemode` (15003) for the file-mode
+singleton rejection. `AGENTGATEWAY_EXPECT_VERSION` makes
 `PreCheck` fail when the gateway is not the release under test.
 
 ## Dependency rules

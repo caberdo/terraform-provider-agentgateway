@@ -21,6 +21,7 @@ func TestEndpointForRoles(t *testing.T) {
 	t.Setenv(EnvEndpoint, "http://hybrid:15000")
 	t.Setenv(EnvEndpointReadOnly, "http://readonly:15001")
 	t.Setenv(EnvEndpointFileOwned, "http://fileowned:15002")
+	t.Setenv(EnvEndpointFileMode, "http://filemode:15003")
 
 	tests := []struct {
 		name string
@@ -30,6 +31,7 @@ func TestEndpointForRoles(t *testing.T) {
 		{name: "hybrid", role: RoleHybrid, want: "http://hybrid:15000"},
 		{name: "read-only", role: RoleReadOnly, want: "http://readonly:15001"},
 		{name: "file-owned", role: RoleFileOwned, want: "http://fileowned:15002"},
+		{name: "file-mode", role: RoleFileMode, want: "http://filemode:15003"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,6 +154,7 @@ func TestRoleEndpointVariable(t *testing.T) {
 		{role: RoleHybrid, want: EnvEndpoint},
 		{role: RoleReadOnly, want: EnvEndpointReadOnly},
 		{role: RoleFileOwned, want: EnvEndpointFileOwned},
+		{role: RoleFileMode, want: EnvEndpointFileMode},
 		{role: Role("unknown"), want: ""},
 	}
 	for _, tc := range tests {
@@ -330,6 +333,7 @@ func childEnv() []string {
 		EnvEndpoint:          true,
 		EnvEndpointReadOnly:  true,
 		EnvEndpointFileOwned: true,
+		EnvEndpointFileMode:  true,
 		EnvExpectVersion:     true,
 	}
 	kept := make([]string, 0, len(os.Environ()))

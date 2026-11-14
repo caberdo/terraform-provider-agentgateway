@@ -36,6 +36,9 @@ const (
 	// RoleFileOwned is the gateway whose config file owns a settings field:
 	// a write that changes that field fails with 409.
 	RoleFileOwned Role = "fileowned"
+	// RoleFileMode is the gateway in file storage mode: the singleton kinds
+	// cannot be read back there, so the provider refuses them up front.
+	RoleFileMode Role = "filemode"
 )
 
 // Environment variables that point the suite at the acceptance environment.
@@ -47,6 +50,8 @@ const (
 	EnvEndpointReadOnly = "AGENTGATEWAY_ENDPOINT_READONLY"
 	// EnvEndpointFileOwned carries the endpoint of the file-owned gateway.
 	EnvEndpointFileOwned = "AGENTGATEWAY_ENDPOINT_FILEOWNED"
+	// EnvEndpointFileMode carries the endpoint of the file-storage gateway.
+	EnvEndpointFileMode = "AGENTGATEWAY_ENDPOINT_FILEMODE"
 	// EnvExpectVersion carries the release the suite expects. The version
 	// matrix and CI set it; PreCheck fails when the gateway reports another
 	// release, so a stale image cannot pass as the release under test.
@@ -94,7 +99,7 @@ func EndpointFor(t *testing.T, role Role) string {
 	t.Helper()
 	name := role.endpointVar()
 	if name == "" {
-		t.Fatalf("unknown acceptance role %q; expected %q, %q or %q", role, RoleHybrid, RoleReadOnly, RoleFileOwned)
+		t.Fatalf("unknown acceptance role %q; expected %q, %q, %q or %q", role, RoleHybrid, RoleReadOnly, RoleFileOwned, RoleFileMode)
 	}
 	endpoint, ok := lookupEndpoint(role)
 	if !ok {
@@ -132,6 +137,8 @@ func (r Role) endpointVar() string {
 		return EnvEndpointReadOnly
 	case RoleFileOwned:
 		return EnvEndpointFileOwned
+	case RoleFileMode:
+		return EnvEndpointFileMode
 	default:
 		return ""
 	}
