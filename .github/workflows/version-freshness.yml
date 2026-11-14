@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          current=$(sed 's/[[:space:]]//g' .github/agentgateway-versions.txt | grep -v '^$')
+          current=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' .github/agentgateway-versions.txt | grep -v '^$')
           floor=$(printf '%s\n' "$current" | head -n 1)
 
           # Newest first from the API; keep non-prerelease tags, take five.

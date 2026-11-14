@@ -24,6 +24,9 @@ sbom.spdx.json
 # Agent scratch space (plan ledgers, briefs, review packages)
 .superpowers/
 
+# Binding design and implementation plan, kept local by the maintainer
+docs/superpowers/
+
 # IDE
 .idea/
 .vscode/

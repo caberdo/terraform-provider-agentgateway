@@ -3,9 +3,6 @@ name: Acceptance
 # The acceptance suite runs against a real agentgateway in Docker. It is a
 # separate workflow from `test.yml` so the unit suite stays fast and the
 # acceptance matrix can be tuned (timeouts, parallelism) on its own.
-#
-# The compose environment is added in Task 6; until it exists this workflow
-# cannot run, which is expected for a scaffold.
 
 on:
   push:
@@ -41,7 +38,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          mapfile -t all < <(sed 's/[[:space:]]//g' .github/agentgateway-versions.txt | grep -v '^$')
+          mapfile -t all < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' .github/agentgateway-versions.txt | grep -v '^$')
           if [[ ${#all[@]} -eq 0 ]]; then
             echo "no supported agentgateway version found in .github/agentgateway-versions.txt" >&2
             exit 1

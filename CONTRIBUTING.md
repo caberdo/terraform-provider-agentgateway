@@ -60,6 +60,32 @@ floor on the first line, then the rolling window, ascending, one per line.
 - `.github/workflows/version-freshness.yml` opens one issue labelled
   `version-matrix` when the window drifts; it never edits the file.
 
+### The Terraform CLI in the acceptance run
+
+`terraform-plugin-testing` drives every acceptance case through the Terraform
+CLI, so a `terraform` binary must be on the `PATH` of the process that runs
+`go test`. The compose `test` service (`make testacc-docker`) starts from a
+bare `golang` image: it ships no Terraform CLI and cannot install one when the
+container has no network.
+
+The authoritative run is therefore on the host, against the three gateways
+started by compose:
+
+```sh
+TF_ACC=1 \
+AGENTGATEWAY_ENDPOINT=http://127.0.0.1:15000 \
+AGENTGATEWAY_ENDPOINT_READONLY=http://127.0.0.1:15001 \
+AGENTGATEWAY_ENDPOINT_FILEOWNED=http://127.0.0.1:15002 \
+go test -count=1 -p 1 -timeout 30m ./internal/...
+```
+
+`-p 1` is required: the gateways are shared fixtures with singleton ids
+(`llm.settings/default`, `mcp.settings/default`, `llm.policy/apiKey`), so
+packages must not run against them in parallel. Set
+`TF_ACC_TERRAFORM_PATH=/path/to/terraform` to pin the CLI, or
+`TF_ACC_TERRAFORM_VERSION=1.9.8` to have the test framework fetch that release
+instead of using the one on `PATH`.
+
 ## Coverage floors
 
 `scripts/coverage-gate.sh` enforces two things on the unit profile

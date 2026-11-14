@@ -10,7 +10,7 @@ AGENTGATEWAY_VERSION ?= v1.7.0
 COMPOSE ?= docker compose
 # Supported versions, single-sourced with the CI matrix. Override for a quick
 # local check: AGENTGATEWAY_VERSIONS="v1.7.0 v1.6.0" make testacc-matrix
-AGENTGATEWAY_VERSIONS ?= $(shell tr '\n' ' ' < .github/agentgateway-versions.txt)
+AGENTGATEWAY_VERSIONS ?= $(shell sed -e 's/\#.*//' .github/agentgateway-versions.txt | tr '\n' ' ')
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .

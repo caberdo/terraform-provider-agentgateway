@@ -76,11 +76,13 @@ kinds:
 One package per kind. Each package owns only its schema and its value
 mapping; everything else is shared:
 
-- `internal/resourceutil.CRUD(kind, newModel)` provides Create, Read, Update,
-  Delete and ImportState. It owns the timeouts, the file-mode singleton
-  rejection, the pre-flight existence check, the create-vs-update path
-  selection, 404 → remove from state, the conflict diagnostics, the import
-  parsing and the computed `id`/`revision` attributes.
+- `internal/resourceutil.CRUD(Spec{TypeName, Kind, Schema, New})` provides
+  Create, Read, Update, Delete and ImportState. It owns the timeouts, the
+  file-mode singleton rejection, the pre-flight existence check, the
+  create-vs-update path selection, 404 → remove from state, the conflict
+  diagnostics and the import parsing. It does **not** own the schema: each
+  package declares its own `id` and `revision` attributes and model fields, and
+  the harness only fills them through `SetServerMeta(id, revision)`.
 - `resourceutil.PolicySchema` / `PolicyModel` give the four policy resources
   one shared shape (`name` + JSON `spec`) instead of four copies.
 - `resourceutil.FilterAndSort` gives the nine data sources one sorting and
@@ -145,6 +147,13 @@ classification into diagnostics:
 Unit tests live in the same package as the code they cover. Acceptance tests
 live next to them and must compile with `go vet ./...` even when they are not
 run locally.
+
+L4 drives Terraform through `terraform-plugin-testing`, which needs a
+`terraform` binary on `PATH` (or `TF_ACC_TERRAFORM_PATH`, or
+`TF_ACC_TERRAFORM_VERSION` to fetch a release). The compose `test` service has
+no Terraform CLI, so the authoritative L4 run is the host
+`TF_ACC=1 go test -p 1 ./internal/...` with the three endpoint variables; see
+`CONTRIBUTING.md`.
 
 The acceptance environment runs three gateway services, because one hybrid
 instance cannot produce every negative path: `hybrid` (port 15000) for the

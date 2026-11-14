@@ -4,8 +4,8 @@ Guidance for coding agents working in this repository.
 
 ## Read these before changing behaviour
 
-The binding design and the implementation plan are **not committed**. The
-maintainer keeps them in the main checkout under `docs/superpowers/`:
+The binding design and the implementation plan are **not committed**. They live
+under `docs/superpowers/`, which the repository's `.gitignore` excludes:
 
 1. `docs/superpowers/specs/2026-11-13-terraform-provider-agentgateway-design.md`
    — the binding design: constraints (C1–C25), frozen interfaces, resource
@@ -13,8 +13,8 @@ maintainer keeps them in the main checkout under `docs/superpowers/`:
 2. `docs/superpowers/plans/2026-11-13-terraform-provider-agentgateway-v1.md` —
    the task-by-task implementation plan and lane ownership.
 
-Those paths are gitignored on purpose, so **a linked worktree does not contain
-them**. Work that runs under SDD is given what it needs instead:
+Because the directory is gitignored, **a linked worktree does not contain those
+files** either. Work that runs under SDD is given what it needs instead:
 
 - the brief for its own task at `.superpowers/sdd/<plan>/task-<N>-brief.md`,
 - the shared templates beside it in the same directory
@@ -35,7 +35,7 @@ is changed deliberately, in the same change.
 |---|---|---|
 | `docs/superpowers/specs/2026-11-13-terraform-provider-agentgateway-design.md` | Binding design: constraints, frozen interfaces, resource contracts, read-back matrix. | Yes, deliberately, in the same change as the code it governs. |
 | `docs/superpowers/plans/2026-11-13-terraform-provider-agentgateway-v1.md` | Task-by-task plan, lane ownership, verification commands. | Yes, when scope changes. |
-| `README.md` | User-facing install, configuration, resource tables, limitations. | Yes. |
+| `README.md` | User-facing install, provider configuration, the 15 resources and 9 data sources, storage modes, limitations and verified unsupported items. | Yes. |
 | `ARCHITECTURE.md` | Request flow, client internals, error taxonomy, auth matrix, test layers. | Yes. |
 | `CONTRIBUTING.md` | Workflow, review gates, branch protection and merge protocol. | Yes. |
 | `docs/index.md`, `docs/resources/*.md`, `docs/data-sources/*.md` | Generated reference. | **No.** Run `make generate`. |
@@ -69,7 +69,8 @@ with the code they cover.
 | `make test` | unit tests |
 | `make coverage` | unit coverage profile and summary |
 | `make lint` | golangci-lint (config at `.golangci.yml`) |
-| `make fmt` / `make vet` | formatting and vet |
+| `make fmt` / `make fmt-check` | gofmt the tree / fail when a tracked file is not gofmt-formatted |
+| `make vet` | `go vet ./...` |
 | `make validate-examples` | `terraform fmt`/`validate` every example |
 | `make generate` | regenerate `docs/` with `tfplugindocs` |
 | `make testacc-docker` | acceptance suite against agentgateway in Docker |

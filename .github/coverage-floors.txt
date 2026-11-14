@@ -18,7 +18,9 @@ internal/datasources/runtime 52.5
 internal/datasources/trafficgateways 78.4
 internal/datasources/trafficroutes 80.3
 internal/provider 68.5
-# providerdata has no test files yet; its floor stays at zero until it does.
+# providerdata holds one struct and no executable statements, so its measured
+# coverage is always 0; TestDataShape pins the struct shape the CRUD harness
+# depends on, and the floor stays at zero deliberately.
 internal/providerdata 0
 internal/resources/frontendpolicy 98.0
 internal/resources/llmapikey 75.5
