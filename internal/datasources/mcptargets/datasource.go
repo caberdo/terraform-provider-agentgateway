@@ -92,7 +92,7 @@ func (d *DataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 						},
 						"host": datasourceschema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "Host of a network transport. Empty for `stdio`.",
+							MarkdownDescription: "Host of the transport. Empty for `stdio` and for `mcp`, `sse` and `openapi` transports configured with `backend`.",
 						},
 						"path": datasourceschema.StringAttribute{
 							Computed:            true,

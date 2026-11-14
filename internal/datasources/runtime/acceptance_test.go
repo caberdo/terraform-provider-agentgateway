@@ -36,6 +36,7 @@ func TestAccRuntimeDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.agentgateway_runtime.test", "gateway_mode", "standalone"),
 					resource.TestCheckResourceAttr("data.agentgateway_runtime.test", "config_store_mode", "hybrid"),
 					resource.TestCheckResourceAttr("data.agentgateway_runtime.test", "config_reload_synchronized", "true"),
+					resource.TestCheckResourceAttr("data.agentgateway_runtime.test", "config_reload_last_error", ""),
 				),
 			},
 		},

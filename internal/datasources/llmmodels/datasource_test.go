@@ -103,6 +103,21 @@ func TestLLMModelsDecodesFieldsAndIgnoresUnknown(t *testing.T) {
 	}
 }
 
+func TestLLMModelsDefaultsVisibilityToPublic(t *testing.T) {
+	t.Parallel()
+
+	c := seedModels(t, `{"name":"team-alpha","provider":"openAI"}`)
+
+	state := readModels(t, c, nil)
+	entries := listEntries(t, state.Models)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(entries))
+	}
+	if entries[0].Visibility.ValueString() != "public" {
+		t.Errorf("expected visibility public, got %q", entries[0].Visibility.ValueString())
+	}
+}
+
 func TestLLMModelsDecodeFailureNamesResource(t *testing.T) {
 	t.Parallel()
 

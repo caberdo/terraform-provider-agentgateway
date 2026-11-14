@@ -161,6 +161,93 @@ func TestAPIKeysAllowedModelsNullAndEmpty(t *testing.T) {
 	}
 }
 
+// TestAPIKeysIgnoresUserMetadataID pins spec C5: the id comes from the
+// server-managed metadata key, never from a user-settable "id".
+func TestAPIKeysIgnoresUserMetadataID(t *testing.T) {
+	t.Parallel()
+
+	_, c := agentgatewaytest.New(t)
+	created, err := c.Create(context.Background(), configresource.KindLLMAPIKey,
+		[]byte(`{"key":"sk-secret","metadata":{"id":"forged","name":"team-a"}}`))
+	if err != nil {
+		t.Fatalf("seeding api key: %v", err)
+	}
+
+	state := readKeys(t, c, nil)
+	entries := listEntries(t, state.Keys)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(entries))
+	}
+	if entries[0].ID.ValueString() != created.ID {
+		t.Errorf("expected the envelope id %q, got %q", created.ID, entries[0].ID.ValueString())
+	}
+	if entries[0].ID.ValueString() == "forged" {
+		t.Error("the data source trusted the user-settable metadata.id")
+	}
+}
+
+// TestAPIKeysNameFallsBackToID mirrors the other list data sources.
+func TestAPIKeysNameFallsBackToID(t *testing.T) {
+	t.Parallel()
+
+	_, c := agentgatewaytest.New(t)
+	created, err := c.Create(context.Background(), configresource.KindLLMAPIKey,
+		[]byte(`{"key":"sk-secret","metadata":{"user":"alice"}}`))
+	if err != nil {
+		t.Fatalf("seeding api key: %v", err)
+	}
+
+	state := readKeys(t, c, nil)
+	entries := listEntries(t, state.Keys)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(entries))
+	}
+	if entries[0].Name.ValueString() != created.ID {
+		t.Errorf("expected name to fall back to %q, got %q", created.ID, entries[0].Name.ValueString())
+	}
+}
+
+// TestAPIKeysCreatedAtInvalidIsNull keeps the schema's RFC3339 promise: an
+// unparseable metadata timestamp is reported as null, never passed through.
+func TestAPIKeysCreatedAtInvalidIsNull(t *testing.T) {
+	t.Parallel()
+
+	ds := &DataSource{client: stubListClient{resources: []configresource.Resource{{
+		Kind:  configresource.KindLLMAPIKey,
+		ID:    "key-id",
+		Value: []byte(`{"key":"sk-secret","metadata":{"name":"team-a","agentgateway.dev/createdAt":"not-a-time"}}`),
+	}}}}
+	s := schemaOf(t, ds)
+
+	var resp datasource.ReadResponse
+	resp.State = emptyState(t, s)
+	ds.Read(context.Background(), requestFor(t, s, nil), &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("read failed: %v", resp.Diagnostics)
+	}
+
+	var state readModel
+	if err := resp.State.Get(context.Background(), &state); err != nil {
+		t.Fatalf("reading state: %v", err)
+	}
+	entries := listEntries(t, state.Keys)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(entries))
+	}
+	if !entries[0].CreatedAt.IsNull() {
+		t.Errorf("expected created_at null, got %q", entries[0].CreatedAt.ValueString())
+	}
+}
+
+// stubListClient returns fixed resources without a gateway.
+type stubListClient struct {
+	resources []configresource.Resource
+}
+
+func (c stubListClient) List(context.Context, configresource.Kind) ([]configresource.Resource, error) {
+	return c.resources, nil
+}
+
 func forbidden(name string) bool {
 	return name == "key" || name == "key_hash" || strings.EqualFold(name, "keyHash")
 }

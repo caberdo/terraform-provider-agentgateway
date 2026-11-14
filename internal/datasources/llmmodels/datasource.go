@@ -188,13 +188,19 @@ func (d *DataSource) Read(ctx context.Context, req datasource.ReadRequest, resp 
 		if name == "" {
 			name = resource.ID
 		}
+		visibility := value.Visibility
+		if visibility == "" {
+			// The resource defaults visibility to public, so a model stored
+			// without the field reads back as public rather than empty.
+			visibility = "public"
+		}
 		entries = append(entries, modelEntry{
 			ID:          types.StringValue(resource.ID),
 			Name:        types.StringValue(name),
 			DisplayName: types.StringValue(value.DisplayName),
 			Provider:    types.StringValue(providerString(value.Provider)),
 			Model:       types.StringValue(value.Params.Model),
-			Visibility:  types.StringValue(value.Visibility),
+			Visibility:  types.StringValue(visibility),
 		})
 	}
 

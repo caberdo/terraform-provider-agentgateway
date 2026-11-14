@@ -97,7 +97,7 @@ func (d *DataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 						},
 						"name": datasourceschema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "Key name from `metadata.name`.",
+							MarkdownDescription: "Key name from `metadata.name`, or the key id when the key carries no name.",
 						},
 						"user": datasourceschema.StringAttribute{
 							Computed:            true,
@@ -114,7 +114,7 @@ func (d *DataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 						},
 						"created_at": datasourceschema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "Creation time in RFC3339 format.",
+							MarkdownDescription: "Creation time in RFC3339 format. Null when the gateway did not report a parseable timestamp.",
 						},
 					},
 				},
@@ -195,7 +195,7 @@ func (d *DataSource) Read(ctx context.Context, req datasource.ReadRequest, resp 
 
 		entries = append(entries, keyEntry{
 			ID:            types.StringValue(keyID(resource, value.Metadata)),
-			Name:          types.StringValue(metadataString(value.Metadata, "name")),
+			Name:          types.StringValue(keyName(resource, value.Metadata)),
 			User:          types.StringValue(metadataString(value.Metadata, "user")),
 			Group:         types.StringValue(metadataString(value.Metadata, "group")),
 			AllowedModels: allowedModels,
@@ -217,28 +217,41 @@ func (d *DataSource) Read(ctx context.Context, req datasource.ReadRequest, resp 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// keyID prefers the id the server copied into metadata; the envelope id is the
-// fallback for servers that do not inject it.
+// keyID prefers the server-managed metadata id; the envelope id is the
+// fallback for servers that do not inject it. The plain "id" metadata key is
+// user-settable and must never be trusted (spec C5).
 func keyID(resource configresource.Resource, metadata map[string]json.RawMessage) string {
-	if id := metadataString(metadata, "id"); id != "" {
+	if id := metadataString(metadata, "agentgateway.dev/id"); id != "" {
 		return id
 	}
 	return resource.ID
 }
 
+// keyName falls back to the envelope id when the key carries no name, like
+// every other list data source.
+func keyName(resource configresource.Resource, metadata map[string]json.RawMessage) string {
+	if name := metadataString(metadata, "name"); name != "" {
+		return name
+	}
+	return resource.ID
+}
+
 // createdAtValue prefers the envelope timestamp and falls back to the
-// server-managed metadata key. It returns null when neither is available.
+// server-managed metadata key. It returns null when neither yields an RFC3339
+// timestamp; an unparseable metadata value is not passed through.
 func createdAtValue(resource configresource.Resource, metadata map[string]json.RawMessage) types.String {
 	if !resource.CreatedAt.IsZero() {
 		return types.StringValue(resource.CreatedAt.UTC().Format(time.RFC3339))
 	}
-	if raw := metadataString(metadata, "agentgateway.dev/createdAt"); raw != "" {
-		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
-			return types.StringValue(parsed.UTC().Format(time.RFC3339))
-		}
-		return types.StringValue(raw)
+	raw := metadataString(metadata, "agentgateway.dev/createdAt")
+	if raw == "" {
+		return types.StringNull()
 	}
-	return types.StringNull()
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return types.StringNull()
+	}
+	return types.StringValue(parsed.UTC().Format(time.RFC3339))
 }
 
 // allowedModelsValue preserves the null/empty distinction from spec C13.
