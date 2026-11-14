@@ -149,6 +149,18 @@ func TestTrafficRouteValue(t *testing.T) {
 			want: `{"name":"r","backends":[{"aws":{"region":"us-east-1"}}]}`,
 		},
 		{
+			// Backend policies are a sibling of the variant, not a variant:
+			// host and policies_json travel together in one backend object.
+			name: "host backend with policies",
+			mutate: func(t *testing.T, m *model) {
+				m.Backends = []backendModel{{
+					Host:     types.StringValue("api.example.com:443"),
+					Policies: jsonValue(`{"backendTLS":{"hostname":"api.example.com"}}`),
+				}}
+			},
+			want: `{"name":"r","backends":[{"weight":1,"host":"api.example.com:443","policies":{"backendTLS":{"hostname":"api.example.com"}}}]}`,
+		},
+		{
 			name: "policies",
 			mutate: func(t *testing.T, m *model) {
 				m.Policies = jsonValue(`{"cors":{"allowOrigins":["https://example.com"]}}`)
@@ -160,10 +172,11 @@ func TestTrafficRouteValue(t *testing.T) {
 			mutate: func(t *testing.T, m *model) {
 				m.Policies = jsontypes.NewNormalizedNull()
 				m.Backends = []backendModel{{
-					Service: jsontypes.NewNormalizedNull(),
-					MCP:     jsontypes.NewNormalizedNull(),
-					AI:      jsontypes.NewNormalizedNull(),
-					JSON:    jsontypes.NewNormalizedNull(),
+					Service:  jsontypes.NewNormalizedNull(),
+					MCP:      jsontypes.NewNormalizedNull(),
+					AI:       jsontypes.NewNormalizedNull(),
+					Policies: jsontypes.NewNormalizedNull(),
+					JSON:     jsontypes.NewNormalizedNull(),
 				}}
 			},
 			want: `{"name":"r","backends":[{"weight":1}]}`,
@@ -232,6 +245,14 @@ func TestTrafficRouteBackendJSONRejectsTypedKeys(t *testing.T) {
 			name:   "backend",
 			json:   `{"backend":{"name":"svc"}}`,
 			detail: "backend must be set as the sibling backend attribute, not inside json",
+		},
+		{
+			// A policies key inside json would be decoded into policies_json on
+			// read and dropped from json, so it is rejected up front instead of
+			// silently deleting the backend's TLS/auth policies.
+			name:   "policies",
+			json:   `{"aws":{"region":"us-east-1"},"policies":{"backendTLS":{"hostname":"api.example.com"}}}`,
+			detail: "policies must be set as the sibling policies_json attribute, not inside json",
 		},
 	}
 

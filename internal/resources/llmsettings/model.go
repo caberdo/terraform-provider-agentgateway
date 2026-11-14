@@ -8,7 +8,6 @@ import (
 	"github.com/caberdo/terraform-provider-agentgateway/internal/resourceutil"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -22,18 +21,17 @@ func newSchema() schema.Schema {
 		MarkdownDescription: "The singleton `llm` section overlay: which gateways LLM traffic is attached to, or the deprecated port and TLS listener.",
 		Attributes: map[string]schema.Attribute{
 			"gateways": schema.ListAttribute{
-				Optional:            true,
-				ElementType:         types.StringType,
-				MarkdownDescription: "Gateways to attach LLM traffic to, as `<gateway>` or `<gateway>/<listener>`. Defaults to `default` server-side. Conflicts with `port`.",
-				Validators: []validator.List{
-					listvalidator.ConflictsWith(path.MatchRoot("port")),
-				},
+				Optional:    true,
+				ElementType: types.StringType,
+				// The empty-list exception is enforced in Value(): a schema
+				// ConflictsWith cannot tell an empty list from a populated one.
+				MarkdownDescription: "Gateways to attach LLM traffic to, as `<gateway>` or `<gateway>/<listener>`. Defaults to `default` server-side. A non-empty list conflicts with `port`; an empty list does not.",
 			},
 			"port": schema.Int64Attribute{
 				Optional:            true,
-				MarkdownDescription: "Deprecated upstream. Port the LLM listener binds to. Conflicts with `gateways`; prefer `gateways`.",
+				MarkdownDescription: "Deprecated upstream. Port the LLM listener binds to. Conflicts with a non-empty `gateways` list; prefer `gateways`.",
 				Validators: []validator.Int64{
-					int64validator.ConflictsWith(path.MatchRoot("gateways")),
+					int64validator.Between(0, 65535),
 				},
 			},
 			"tls_json": schema.StringAttribute{
@@ -72,10 +70,17 @@ func (m *llmSettingsModel) ID() string { return "default" }
 func (m *llmSettingsModel) Value(ctx context.Context, diags *diag.Diagnostics) json.RawMessage {
 	hasGateways := !m.Gateways.IsNull() && !m.Gateways.IsUnknown()
 	hasPort := !m.Port.IsNull() && !m.Port.IsUnknown()
-	if hasGateways && hasPort {
-		diags.AddError(
+	// A populated gateways list and port are alternatives. An empty list is not
+	// a conflicting value: the gateway UI writes `gateways: []` next to `port`
+	// when no gateway is bound, and the gateway accepts that. The check lives
+	// here rather than in the schema because a schema ConflictsWith cannot tell
+	// an empty list from a populated one.
+	if hasGateways && len(m.Gateways.Elements()) > 0 && hasPort {
+		diags.AddAttributeError(
+			path.Root("gateways"),
 			"Invalid agentgateway_llm_settings",
-			"gateways and port conflict; set gateways, or port for the deprecated listener, but not both",
+			"gateways and port conflict; set gateways, or port for the deprecated listener, but not both. "+
+				"An empty gateways list is accepted with port.",
 		)
 		return nil
 	}

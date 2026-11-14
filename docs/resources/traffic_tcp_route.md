@@ -100,11 +100,10 @@ resource "agentgateway_traffic_tcp_route" "replicated" {
 
 Optional:
 
-- `ai_json` (String) AI backend as JSON. Exactly one backend variant may be set.
 - `backend` (String) Name of a backend defined in the gateway's top-level backends list. Exactly one backend variant may be set.
 - `dynamic_json` (String) Dynamic backend as JSON (`{target: <CEL expression>}`). Exactly one backend variant may be set.
 - `host` (String) Backend address as `host:port`, for example `postgres.example.com:5432`. Exactly one backend variant may be set.
-- `json` (String) Any other backend as JSON (`aws`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `mcp`, `ai`, `dynamic`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.
-- `mcp_json` (String) MCP backend as JSON. Exactly one backend variant may be set.
+- `json` (String) Any other backend as JSON (`aws`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `dynamic`, `policies`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.
+- `policies_json` (String, Sensitive) Policies that apply to this backend only (a TCP backend accepts `backendTLS`) as JSON. Sibling of the backend variant, not a variant itself. Typed backend keys are rejected inside `json`; set them here or on the sibling attributes.
 - `service_json` (String) Service backend as JSON (`{name: "<namespace>/<hostname>", port: <port>}`). Exactly one backend variant may be set.
 - `weight` (Number) Relative weight of this backend. The server default is `1`.

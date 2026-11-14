@@ -235,10 +235,18 @@ func resourceSchema() schema.Schema {
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
+						"policies_json": schema.StringAttribute{
+							Optional:   true,
+							CustomType: jsontypes.NormalizedType{},
+							// Backend policies carry TLS material and authorization
+							// rules, so the whole block is marked sensitive.
+							Sensitive:           true,
+							MarkdownDescription: "Policies that apply to this backend only (for example `backendTLS` or `authorization`) as JSON. Sibling of the backend variant, not a variant itself. Typed backend keys are rejected inside `json`; set them here or on the sibling attributes.",
+						},
 						"json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Exactly one backend variant may be set.",
+							MarkdownDescription: "Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `mcp`, `ai`, `policies`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},

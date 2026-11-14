@@ -18,8 +18,6 @@ var backendOptions = []path.Expression{
 	path.MatchRelative().AtParent().AtName("host"),
 	path.MatchRelative().AtParent().AtName("backend"),
 	path.MatchRelative().AtParent().AtName("service_json"),
-	path.MatchRelative().AtParent().AtName("mcp_json"),
-	path.MatchRelative().AtParent().AtName("ai_json"),
 	path.MatchRelative().AtParent().AtName("dynamic_json"),
 	path.MatchRelative().AtParent().AtName("json"),
 }
@@ -111,22 +109,6 @@ func resourceSchema() schema.Schema {
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
-						"mcp_json": schema.StringAttribute{
-							Optional:            true,
-							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "MCP backend as JSON. Exactly one backend variant may be set.",
-							Validators: []validator.String{
-								stringvalidator.ExactlyOneOf(backendOptions...),
-							},
-						},
-						"ai_json": schema.StringAttribute{
-							Optional:            true,
-							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "AI backend as JSON. Exactly one backend variant may be set.",
-							Validators: []validator.String{
-								stringvalidator.ExactlyOneOf(backendOptions...),
-							},
-						},
 						"dynamic_json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
@@ -135,10 +117,18 @@ func resourceSchema() schema.Schema {
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
+						"policies_json": schema.StringAttribute{
+							Optional:   true,
+							CustomType: jsontypes.NormalizedType{},
+							// Backend policies carry TLS material, so the whole
+							// block is marked sensitive.
+							Sensitive:           true,
+							MarkdownDescription: "Policies that apply to this backend only (a TCP backend accepts `backendTLS`) as JSON. Sibling of the backend variant, not a variant itself. Typed backend keys are rejected inside `json`; set them here or on the sibling attributes.",
+						},
 						"json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Any other backend as JSON (`aws`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `mcp`, `ai`, `dynamic`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.",
+							MarkdownDescription: "Any other backend as JSON (`aws`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `dynamic`, `policies`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},

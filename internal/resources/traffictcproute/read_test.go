@@ -22,8 +22,6 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 				{"weight": 2, "host": "127.0.0.1:8080"},
 				{"weight": 1, "backend": "svc"},
 				{"weight": 1, "service": {"name": "default/svc", "port": 8080}},
-				{"weight": 1, "mcp": {"targets": []}},
-				{"weight": 1, "ai": {"provider": "openai"}},
 				{"weight": 1, "dynamic": {"target": "source.address"}},
 				{"weight": 3, "aws": {"region": "us-east-1"}}
 			],
@@ -63,8 +61,8 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			t.Errorf("Hostnames = %v, want [example.com *.example.org]", hostnames)
 		}
 
-		if len(m.Backends) != 7 {
-			t.Fatalf("len(Backends) = %d, want 7", len(m.Backends))
+		if len(m.Backends) != 5 {
+			t.Fatalf("len(Backends) = %d, want 5", len(m.Backends))
 		}
 		if got := m.Backends[0].Weight.ValueInt64(); got != 2 {
 			t.Errorf("backend[0] Weight = %d, want 2", got)
@@ -82,10 +80,8 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			want string
 		}{
 			{"backend[2].Service", m.Backends[2].Service, `{"name": "default/svc", "port": 8080}`},
-			{"backend[3].MCP", m.Backends[3].MCP, `{"targets": []}`},
-			{"backend[4].AI", m.Backends[4].AI, `{"provider": "openai"}`},
-			{"backend[5].Dynamic", m.Backends[5].Dynamic, `{"target": "source.address"}`},
-			{"backend[6].JSON", m.Backends[6].JSON, `{"aws":{"region":"us-east-1"}}`},
+			{"backend[3].Dynamic", m.Backends[3].Dynamic, `{"target": "source.address"}`},
+			{"backend[4].JSON", m.Backends[4].JSON, `{"aws":{"region":"us-east-1"}}`},
 			{"Policies", m.Policies, `{"backendTLS": {"hostname": "db.example.com"}}`},
 		}
 		for _, field := range jsonFields {
@@ -245,6 +241,30 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 		}
 		if got := m.Backends[1].Backend.ValueString(); got != "postgres" {
 			t.Errorf("Backend = %q, want postgres", got)
+		}
+	})
+
+	t.Run("backend policies are decoded into policies_json, not json", func(t *testing.T) {
+		m := newModel()
+		var diags diag.Diagnostics
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":1,"host":"postgres.example.com:5432","policies":{"backendTLS":{"hostname":"postgres.example.com"}}}]}`), &diags)
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned diagnostics: %v", diags)
+		}
+		if len(m.Backends) != 1 {
+			t.Fatalf("len(Backends) = %d, want 1", len(m.Backends))
+		}
+		if got := m.Backends[0].Host.ValueString(); got != "postgres.example.com:5432" {
+			t.Errorf("Host = %q, want postgres.example.com:5432", got)
+		}
+		if m.Backends[0].Policies.IsNull() {
+			t.Fatal("Policies is null, want the backend policies")
+		}
+		if got := m.Backends[0].Policies.ValueString(); got != `{"backendTLS":{"hostname":"postgres.example.com"}}` {
+			t.Errorf("Policies = %s, want the backend policies", got)
+		}
+		if !m.Backends[0].JSON.IsNull() {
+			t.Errorf("JSON = %s, want null when the only extra key is policies", m.Backends[0].JSON.ValueString())
 		}
 	})
 

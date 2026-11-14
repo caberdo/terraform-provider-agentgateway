@@ -275,6 +275,33 @@ func TestTrafficRouteSetValue(t *testing.T) {
 		}
 	})
 
+	t.Run("backend policies are decoded into policies_json, not json", func(t *testing.T) {
+		m := newModel()
+		var diags diag.Diagnostics
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":1,"host":"api.example.com:443","policies":{"backendTLS":{"hostname":"api.example.com"}}}]}`), &diags)
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned diagnostics: %v", diags)
+		}
+		if len(m.Backends) != 1 {
+			t.Fatalf("len(Backends) = %d, want 1", len(m.Backends))
+		}
+		if got := m.Backends[0].Host.ValueString(); got != "api.example.com:443" {
+			t.Errorf("Host = %q, want api.example.com:443", got)
+		}
+		if m.Backends[0].Policies.IsNull() {
+			t.Fatal("Policies is null, want the backend policies")
+		}
+		if got := m.Backends[0].Policies.ValueString(); got != `{"backendTLS":{"hostname":"api.example.com"}}` {
+			t.Errorf("Policies = %s, want the backend policies", got)
+		}
+		// The policies must not leak into the generic json variant: that would
+		// show up as json = {"policies": …} next to the typed host and the next
+		// apply would delete the backend policies.
+		if !m.Backends[0].JSON.IsNull() {
+			t.Errorf("JSON = %s, want null when the only extra key is policies", m.Backends[0].JSON.ValueString())
+		}
+	})
+
 	t.Run("legacy object host and backend are tolerated as absent", func(t *testing.T) {
 		m := newModel()
 		var diags diag.Diagnostics

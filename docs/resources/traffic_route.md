@@ -133,8 +133,9 @@ Optional:
 - `ai_json` (String) AI backend as JSON. Exactly one backend variant may be set.
 - `backend` (String) Name of a backend to route to, as a bare string. Exactly one backend variant may be set.
 - `host` (String) Direct host backend as a bare string, for example `example.com:8000` or a URI such as `http://127.0.0.1:8080`. Exactly one backend variant may be set.
-- `json` (String) Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Exactly one backend variant may be set.
+- `json` (String) Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `mcp`, `ai`, `policies`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.
 - `mcp_json` (String) MCP backend as JSON. Exactly one backend variant may be set.
+- `policies_json` (String, Sensitive) Policies that apply to this backend only (for example `backendTLS` or `authorization`) as JSON. Sibling of the backend variant, not a variant itself. Typed backend keys are rejected inside `json`; set them here or on the sibling attributes.
 - `service_json` (String) Service backend as JSON, `{name, port}`. Exactly one backend variant may be set.
 - `weight` (Number) Relative weight of this backend. The server default is `1`.
 

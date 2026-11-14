@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 )
@@ -233,7 +234,7 @@ func classifyError(status int, body []byte) error {
 		return nil
 	}
 
-	msg := extractMessage(body)
+	msg := extractMessage(status, body)
 	switch status {
 	case http.StatusNotFound:
 		return &APIError{Status: status, Message: msg, Kind: ErrNotFound}
@@ -255,13 +256,39 @@ func classifyError(status int, body []byte) error {
 	return &APIError{Status: status, Message: msg, Kind: ErrServer}
 }
 
-// extractMessage unquotes a JSON string body, falling back to the raw bytes.
-func extractMessage(body []byte) string {
-	var s string
-	if err := json.Unmarshal(body, &s); err == nil {
-		return s
+// maxErrorBody caps how much of a non-JSON response body an APIError carries
+// into a diagnostic. A proxy HTML error page must not end up in a plan.
+const maxErrorBody = 200
+
+// extractMessage returns the message an error response carries. A JSON string
+// body is the gateway's own message and is used verbatim. Any other body (a
+// proxy HTML page, a load-balancer error, an empty body) is not echoed: it
+// becomes a short generic message that names the HTTP status and carries at
+// most maxErrorBody bytes of the body, so an arbitrary response cannot flood
+// the diagnostics.
+func extractMessage(status int, body []byte) string {
+	var message string
+	if err := json.Unmarshal(body, &message); err == nil {
+		return message
 	}
-	return string(body)
+	return nonJSONMessage(status, body)
+}
+
+// nonJSONMessage describes a response whose body is not a JSON string.
+func nonJSONMessage(status int, body []byte) string {
+	snippet := strings.Join(strings.Fields(string(body)), " ")
+	if snippet == "" {
+		return fmt.Sprintf("the gateway returned an empty error response (HTTP %d)", status)
+	}
+	if len(snippet) > maxErrorBody {
+		snippet = snippet[:maxErrorBody]
+		// Do not cut a multi-byte rune in half.
+		for len(snippet) > 0 && !utf8.ValidString(snippet) {
+			snippet = snippet[:len(snippet)-1]
+		}
+		snippet += "…"
+	}
+	return fmt.Sprintf("the gateway returned a non-JSON error response (HTTP %d): %s", status, snippet)
 }
 
 // resourcesResponse is the envelope of every config-resource answer. A list

@@ -32,6 +32,18 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      # gofmt is not one of golangci-lint's default linters, so a formatting
+      # slip would otherwise only show up in review. Gate it before the linter.
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would reformat these files:" >&2
+            echo "$unformatted" >&2
+            echo "run 'gofmt -w' on them (or 'make fmt')" >&2
+            exit 1
+          fi
+
       # Build the linter with the toolchain in go.mod instead of downloading the
       # prebuilt binary. Released binaries are built with an older Go (v2.15.0
       # ships go1.27.0), which cannot read Go 1.27.4 export data: the lint run

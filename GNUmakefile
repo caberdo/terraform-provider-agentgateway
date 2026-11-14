@@ -78,7 +78,20 @@ testacc-matrix:
 	echo; echo "==> Acceptance matrix summary"; cat "$$results"; rm -f "$$results"; \
 	exit $$status
 
-lint:
+# Fail when a tracked Go file is not gofmt-formatted. gofmt is not one of
+# golangci-lint's default linters, so it gets its own gate.
+fmt-check:
+	@files=$$(git ls-files '*.go'); \
+	if [ -z "$$files" ]; then exit 0; fi; \
+	unformatted=$$(gofmt -l $$files); \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt would reformat these files:" >&2; \
+		echo "$$unformatted" >&2; \
+		echo "run 'gofmt -w' on them (or 'make fmt')" >&2; \
+		exit 1; \
+	fi
+
+lint: fmt-check
 	golangci-lint run --config .golangci.yml ./...
 
 lint-fix:
@@ -106,4 +119,4 @@ generate:
 release-check:
 	./scripts/release-check.sh
 
-.PHONY: default build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check coverage-gate testacc testacc-docker testacc-matrix lint lint-fix fmt vet install validate-examples generate release-check
+.PHONY: default build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check coverage-gate testacc testacc-docker testacc-matrix lint lint-fix fmt fmt-check vet install validate-examples generate release-check

@@ -43,6 +43,23 @@ func TestLLMSettingsValue(t *testing.T) {
 			want: `{"gateways": []}`,
 		},
 		{
+			name: "port only",
+			model: llmSettingsModel{
+				Port: types.Int64Value(8080),
+			},
+			want: `{"port": 8080}`,
+		},
+		{
+			// The gateway UI writes an empty gateways list next to port, so an
+			// empty list must not be treated as a conflicting value.
+			name: "empty gateways with port is accepted",
+			model: llmSettingsModel{
+				Gateways: types.ListValueMust(types.StringType, []attr.Value{}),
+				Port:     types.Int64Value(8080),
+			},
+			want: `{"gateways": [], "port": 8080}`,
+		},
+		{
 			name: "port with tls",
 			model: llmSettingsModel{
 				Port:    types.Int64Value(8080),
@@ -73,19 +90,54 @@ func TestLLMSettingsValue(t *testing.T) {
 	}
 }
 
+// TestLLMSettingsValueRejectsGatewaysWithPort pins the port/gateways conflict:
+// an empty gateways list is what the gateway UI writes next to `port`, so it is
+// accepted; a populated list is a real conflict and the diagnostic names both
+// attributes.
 func TestLLMSettingsValueRejectsGatewaysWithPort(t *testing.T) {
-	model := llmSettingsModel{
-		Gateways: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("default")}),
-		Port:     types.Int64Value(8080),
-	}
+	t.Run("empty gateways with port is accepted", func(t *testing.T) {
+		model := llmSettingsModel{
+			Gateways: types.ListValueMust(types.StringType, []attr.Value{}),
+			Port:     types.Int64Value(8080),
+		}
 
-	var diags diag.Diagnostics
-	if got := model.Value(context.Background(), &diags); got != nil {
-		t.Errorf("expected no payload, got %s", got)
-	}
-	if !diags.HasError() {
-		t.Fatal("expected a diagnostic for gateways and port together")
-	}
+		var diags diag.Diagnostics
+		got := model.Value(context.Background(), &diags)
+		if diags.HasError() {
+			t.Fatalf("Value() diagnostics = %v", diags)
+		}
+		assertJSONEqual(t, got, `{"gateways": [], "port": 8080}`)
+	})
+
+	t.Run("non-empty gateways with port is rejected", func(t *testing.T) {
+		model := llmSettingsModel{
+			Gateways: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("default")}),
+			Port:     types.Int64Value(8080),
+		}
+
+		var diags diag.Diagnostics
+		if got := model.Value(context.Background(), &diags); got != nil {
+			t.Errorf("expected no payload, got %s", got)
+		}
+		if !diags.HasError() {
+			t.Fatal("expected a diagnostic for gateways and port together")
+		}
+
+		detail := diags[0].Detail()
+		for _, want := range []string{"gateways", "port"} {
+			if !strings.Contains(detail, want) {
+				t.Errorf("detail = %q, want it to name %q", detail, want)
+			}
+		}
+
+		withPath, ok := diags[0].(diag.DiagnosticWithPath)
+		if !ok {
+			t.Fatal("diagnostic carries no attribute path")
+		}
+		if got := withPath.Path().String(); got != "gateways" {
+			t.Errorf("diagnostic path = %q, want gateways", got)
+		}
+	})
 }
 
 func TestLLMSettingsIDAndServerMeta(t *testing.T) {

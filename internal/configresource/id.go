@@ -58,4 +58,3 @@ func unquoteString(raw json.RawMessage, kind Kind) (string, error) {
 	}
 	return s, nil
 }
-

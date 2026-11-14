@@ -8,8 +8,8 @@ package tools
 import (
 	_ "github.com/hashicorp/go-version"
 	_ "github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs"
-	_ "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	_ "github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	_ "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	_ "github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	_ "github.com/hashicorp/terraform-plugin-log/tflog"
 	_ "github.com/hashicorp/terraform-plugin-testing/helper/resource"

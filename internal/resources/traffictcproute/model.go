@@ -22,14 +22,13 @@ import (
 // Upstream (LocalTCPRouteBackend) models host and backend as bare strings:
 // `{"host":"example.com:8000"}` and `{"backend":"name"}`.
 type backendModel struct {
-	Weight  types.Int64          `tfsdk:"weight"`
-	Host    types.String         `tfsdk:"host"`
-	Backend types.String         `tfsdk:"backend"`
-	Service jsontypes.Normalized `tfsdk:"service_json"`
-	MCP     jsontypes.Normalized `tfsdk:"mcp_json"`
-	AI      jsontypes.Normalized `tfsdk:"ai_json"`
-	Dynamic jsontypes.Normalized `tfsdk:"dynamic_json"`
-	JSON    jsontypes.Normalized `tfsdk:"json"`
+	Weight   types.Int64          `tfsdk:"weight"`
+	Host     types.String         `tfsdk:"host"`
+	Backend  types.String         `tfsdk:"backend"`
+	Service  jsontypes.Normalized `tfsdk:"service_json"`
+	Dynamic  jsontypes.Normalized `tfsdk:"dynamic_json"`
+	Policies jsontypes.Normalized `tfsdk:"policies_json"`
+	JSON     jsontypes.Normalized `tfsdk:"json"`
 }
 
 // model is the Terraform representation of a traffic.tcpRoute resource.
@@ -75,13 +74,12 @@ type tcpRoutePayload struct {
 // backendPayload is the value object for a known backend variant. A generic
 // json backend is merged into this object at the top level instead.
 type backendPayload struct {
-	Weight  *int64          `json:"weight,omitempty"`
-	Host    *string         `json:"host,omitempty"`
-	Backend *string         `json:"backend,omitempty"`
-	Service json.RawMessage `json:"service,omitempty"`
-	MCP     json.RawMessage `json:"mcp,omitempty"`
-	AI      json.RawMessage `json:"ai,omitempty"`
-	Dynamic json.RawMessage `json:"dynamic,omitempty"`
+	Weight   *int64          `json:"weight,omitempty"`
+	Host     *string         `json:"host,omitempty"`
+	Backend  *string         `json:"backend,omitempty"`
+	Service  json.RawMessage `json:"service,omitempty"`
+	Dynamic  json.RawMessage `json:"dynamic,omitempty"`
+	Policies json.RawMessage `json:"policies,omitempty"`
 }
 
 // tcpRouteValue is the wire representation decoded from the API.
@@ -146,12 +144,12 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 	for i, backend := range m.Backends {
 		backendPath := path.Root("backends").AtListIndex(i)
 
-		variants := countSet(backend.Host, backend.Backend, backend.Service, backend.MCP, backend.AI, backend.Dynamic, backend.JSON)
+		variants := countSet(backend.Host, backend.Backend, backend.Service, backend.Dynamic, backend.JSON)
 		if variants > 1 {
 			diags.AddAttributeError(
 				backendPath,
 				"Invalid traffic TCP route backend",
-				"exactly one of host, backend, service_json, mcp_json, ai_json, dynamic_json or json may be set per backend",
+				"exactly one of host, backend, service_json, dynamic_json or json may be set per backend",
 			)
 		}
 
@@ -162,11 +160,10 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 		}
 
 		payload := backendPayload{
-			Weight:  weight,
-			Service: rawJSON(backend.Service),
-			MCP:     rawJSON(backend.MCP),
-			AI:      rawJSON(backend.AI),
-			Dynamic: rawJSON(backend.Dynamic),
+			Weight:   weight,
+			Service:  rawJSON(backend.Service),
+			Dynamic:  rawJSON(backend.Dynamic),
+			Policies: rawJSON(backend.Policies),
 		}
 		if isSet(backend.Host) {
 			host := backend.Host.ValueString()
@@ -233,13 +230,12 @@ func (e *backendJSONKeyError) Error() string { return e.key }
 // into the typed attribute on read, so the json object would never round-trip
 // and the plan would never converge.
 var backendJSONKeyMessages = map[string]string{
-	"weight":  "weight must be set as the sibling weight attribute, not inside json",
-	"host":    "host must be set as the sibling host attribute, not inside json",
-	"backend": "backend must be set as the sibling backend attribute, not inside json",
-	"service": "service must be set as the sibling service_json attribute, not inside json",
-	"mcp":     "mcp must be set as the sibling mcp_json attribute, not inside json",
-	"ai":      "ai must be set as the sibling ai_json attribute, not inside json",
-	"dynamic": "dynamic must be set as the sibling dynamic_json attribute, not inside json",
+	"weight":   "weight must be set as the sibling weight attribute, not inside json",
+	"host":     "host must be set as the sibling host attribute, not inside json",
+	"backend":  "backend must be set as the sibling backend attribute, not inside json",
+	"service":  "service must be set as the sibling service_json attribute, not inside json",
+	"dynamic":  "dynamic must be set as the sibling dynamic_json attribute, not inside json",
+	"policies": "policies must be set as the sibling policies_json attribute, not inside json",
 }
 
 // backendJSONKeyMessage returns the diagnostic detail for a typed key found
@@ -355,14 +351,13 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 	}
 
 	backend.Service = normalizedFromRaw(body["service"])
-	backend.MCP = normalizedFromRaw(body["mcp"])
-	backend.AI = normalizedFromRaw(body["ai"])
 	backend.Dynamic = normalizedFromRaw(body["dynamic"])
+	backend.Policies = normalizedFromRaw(body["policies"])
 
 	extras := make(map[string]json.RawMessage)
 	for key, value := range body {
 		switch key {
-		case "weight", "service", "mcp", "ai", "dynamic":
+		case "weight", "service", "dynamic", "policies":
 			continue
 		case "host":
 			if typedHost {
@@ -380,7 +375,7 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 	// in an unexpected shape (the old host/backend object form) still counts as
 	// typed, so its data is not re-labelled as generic json.
 	typedVariant := presentJSON(body, "host") || presentJSON(body, "backend") ||
-		isSet(backend.Service) || isSet(backend.MCP) || isSet(backend.AI) || isSet(backend.Dynamic)
+		isSet(backend.Service) || isSet(backend.Dynamic) || isSet(backend.Policies)
 	if len(extras) > 0 || !typedVariant {
 		encoded, err := json.Marshal(extras)
 		if err != nil {

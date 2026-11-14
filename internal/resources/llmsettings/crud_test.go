@@ -57,8 +57,9 @@ resource "agentgateway_llm_settings" "test" {
 	})
 }
 
-// TestLLMSettingsSchemaConflicts pins that gateways and port cannot be set
-// together, before any request reaches the gateway.
+// TestLLMSettingsSchemaConflicts pins that a populated gateways list and port
+// cannot be set together, and that an empty list is accepted next to port
+// (which is what the gateway UI writes when no gateway is bound).
 func TestLLMSettingsSchemaConflicts(t *testing.T) {
 	t.Parallel()
 
@@ -72,7 +73,18 @@ resource "agentgateway_llm_settings" "test" {
   gateways = ["default"]
   port     = 8080
 }`,
-				ExpectError: regexp.MustCompile(`cannot be specified when`),
+				ExpectError: regexp.MustCompile(`gateways and port conflict`),
+			},
+			{
+				Config: `
+resource "agentgateway_llm_settings" "test" {
+  gateways = []
+  port     = 8080
+}`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "port", "8080"),
+					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "gateways.#", "0"),
+				),
 			},
 		},
 	})

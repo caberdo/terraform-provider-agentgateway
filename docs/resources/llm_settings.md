@@ -40,8 +40,8 @@ resource "agentgateway_llm_settings" "default" {
 
 ### Optional
 
-- `gateways` (List of String) Gateways to attach LLM traffic to, as `<gateway>` or `<gateway>/<listener>`. Defaults to `default` server-side. Conflicts with `port`.
-- `port` (Number) Deprecated upstream. Port the LLM listener binds to. Conflicts with `gateways`; prefer `gateways`.
+- `gateways` (List of String) Gateways to attach LLM traffic to, as `<gateway>` or `<gateway>/<listener>`. Defaults to `default` server-side. A non-empty list conflicts with `port`; an empty list does not.
+- `port` (Number) Deprecated upstream. Port the LLM listener binds to. Conflicts with a non-empty `gateways` list; prefer `gateways`.
 - `tls_json` (String) Server TLS configuration used with the deprecated `port`, as JSON.
 
 ### Read-Only

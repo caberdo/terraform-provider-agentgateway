@@ -7,9 +7,9 @@ import (
 
 func TestEnumSlices(t *testing.T) {
 	cases := []struct {
-		name     string
-		slice    []string
-		wantLen  int
+		name      string
+		slice     []string
+		wantLen   int
 		sentinels []string
 	}{
 		{

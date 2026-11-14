@@ -88,20 +88,6 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 			want: `{"name":"r","backends":[{"weight":1,"service":{"name":"default/svc","port":8080}}]}`,
 		},
 		{
-			name: "mcp json backend",
-			mutate: func(t *testing.T, m *model) {
-				m.Backends = []backendModel{{MCP: jsonValue(`{"targets":[{"name":"tools"}]}`)}}
-			},
-			want: `{"name":"r","backends":[{"weight":1,"mcp":{"targets":[{"name":"tools"}]}}]}`,
-		},
-		{
-			name: "ai json backend",
-			mutate: func(t *testing.T, m *model) {
-				m.Backends = []backendModel{{AI: jsonValue(`{"provider":"openai"}`)}}
-			},
-			want: `{"name":"r","backends":[{"weight":1,"ai":{"provider":"openai"}}]}`,
-		},
-		{
 			name: "dynamic json backend",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{Dynamic: jsonValue(`{"target":"source.address"}`)}}
@@ -116,6 +102,18 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 			want: `{"name":"r","backends":[{"aws":{"region":"us-east-1"}}]}`,
 		},
 		{
+			// Backend policies are a sibling of the variant, not a variant:
+			// host and policies_json travel together in one backend object.
+			name: "host backend with policies",
+			mutate: func(t *testing.T, m *model) {
+				m.Backends = []backendModel{{
+					Host:     types.StringValue("postgres.example.com:5432"),
+					Policies: jsonValue(`{"backendTLS":{"hostname":"postgres.example.com"}}`),
+				}}
+			},
+			want: `{"name":"r","backends":[{"weight":1,"host":"postgres.example.com:5432","policies":{"backendTLS":{"hostname":"postgres.example.com"}}}]}`,
+		},
+		{
 			name: "policies",
 			mutate: func(t *testing.T, m *model) {
 				m.Policies = jsonValue(`{"backendTLS":{"hostname":"db.example.com"}}`)
@@ -127,11 +125,10 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 			mutate: func(t *testing.T, m *model) {
 				m.Policies = jsontypes.NewNormalizedNull()
 				m.Backends = []backendModel{{
-					Service: jsontypes.NewNormalizedNull(),
-					MCP:     jsontypes.NewNormalizedNull(),
-					AI:      jsontypes.NewNormalizedNull(),
-					Dynamic: jsontypes.NewNormalizedNull(),
-					JSON:    jsontypes.NewNormalizedNull(),
+					Service:  jsontypes.NewNormalizedNull(),
+					Dynamic:  jsontypes.NewNormalizedNull(),
+					Policies: jsontypes.NewNormalizedNull(),
+					JSON:     jsontypes.NewNormalizedNull(),
 				}}
 			},
 			want: `{"name":"r","backends":[{"weight":1}]}`,
@@ -195,9 +192,9 @@ func TestTrafficTCPRouteBackendVariantIsExclusive(t *testing.T) {
 			second: func(b *backendModel) { b.JSON = jsonValue(`{"internal":{}}`) },
 		},
 		{
-			name:   "mcp and ai",
-			first:  func(b *backendModel) { b.MCP = jsonValue(`{"targets":[]}`) },
-			second: func(b *backendModel) { b.AI = jsonValue(`{"provider":"openai"}`) },
+			name:   "service and dynamic",
+			first:  func(b *backendModel) { b.Service = jsonValue(`{"name":"default/svc"}`) },
+			second: func(b *backendModel) { b.Dynamic = jsonValue(`{"target":"source.address"}`) },
 		},
 		{
 			name:   "dynamic and host",
@@ -271,19 +268,17 @@ func TestTrafficTCPRouteBackendJSONRejectsTypedKeys(t *testing.T) {
 			detail: "service must be set as the sibling service_json attribute, not inside json",
 		},
 		{
-			name:   "mcp",
-			json:   `{"aws":{"region":"us-east-1"},"mcp":{"targets":[]}}`,
-			detail: "mcp must be set as the sibling mcp_json attribute, not inside json",
-		},
-		{
-			name:   "ai",
-			json:   `{"aws":{"region":"us-east-1"},"ai":{"provider":"openai"}}`,
-			detail: "ai must be set as the sibling ai_json attribute, not inside json",
-		},
-		{
 			name:   "dynamic",
 			json:   `{"aws":{"region":"us-east-1"},"dynamic":{"target":"source.address"}}`,
 			detail: "dynamic must be set as the sibling dynamic_json attribute, not inside json",
+		},
+		{
+			// A policies key inside json would be decoded into policies_json on
+			// read and dropped from json, so it is rejected up front instead of
+			// silently deleting the backend's TLS policies.
+			name:   "policies",
+			json:   `{"aws":{"region":"us-east-1"},"policies":{"backendTLS":{"hostname":"postgres.example.com"}}}`,
+			detail: "policies must be set as the sibling policies_json attribute, not inside json",
 		},
 	}
 
