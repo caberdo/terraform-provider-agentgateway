@@ -17,8 +17,10 @@ import (
 // singletonID is the fixed id of the model catalog overlay (spec §7.0).
 const singletonID = "default"
 
-// catalogOptions are the two mutually exclusive catalog leaves: a base catalog
-// (with metadata.generatedAt) and a custom overlay (spec §7.15).
+// catalogOptions are the two catalog leaves: a base catalog (with
+// metadata.generatedAt) and a custom overlay. Either or both may be set
+// (spec §7.15): the gateway value carries `base` and `custom` together, and the
+// overlay is applied on top of the base catalog.
 var catalogOptions = []path.Expression{
 	path.MatchRoot("base_json"),
 	path.MatchRoot("custom_json"),
@@ -32,17 +34,17 @@ func newSchema() schema.Schema {
 			"base_json": schema.StringAttribute{
 				Optional:            true,
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Base catalog as JSON, including `metadata.generatedAt`. Exactly one of `base_json` or `custom_json` must be set.",
+				MarkdownDescription: "Base catalog as JSON, including `metadata.generatedAt`. At least one of `base_json` or `custom_json` must be set; both may be set together.",
 				Validators: []validator.String{
-					stringvalidator.ExactlyOneOf(catalogOptions...),
+					stringvalidator.AtLeastOneOf(catalogOptions...),
 				},
 			},
 			"custom_json": schema.StringAttribute{
 				Optional:            true,
 				CustomType:          jsontypes.NormalizedType{},
-				MarkdownDescription: "Custom catalog overlay as JSON, without `metadata`. Exactly one of `base_json` or `custom_json` must be set.",
+				MarkdownDescription: "Custom catalog overlay as JSON, without `metadata`. At least one of `base_json` or `custom_json` must be set; both may be set together.",
 				Validators: []validator.String{
-					stringvalidator.ExactlyOneOf(catalogOptions...),
+					stringvalidator.AtLeastOneOf(catalogOptions...),
 				},
 			},
 			"id": schema.StringAttribute{
@@ -88,32 +90,23 @@ type catalogPayload struct {
 	Custom json.RawMessage `json:"custom,omitempty"`
 }
 
-// Value builds the API value object from the model.
+// Value builds the API value object from the model. At least one leaf is
+// required, and both may be set: a base catalog replaces the built-in one and a
+// custom overlay is applied on top of it (spec §7.15).
 func (m *modelCatalogModel) Value(_ context.Context, diags *diag.Diagnostics) json.RawMessage {
 	payload := catalogPayload{}
-	set := 0
 
 	if presentJSON(m.BaseJSON) {
 		payload.Base = json.RawMessage(m.BaseJSON.ValueString())
-		set++
 	}
 	if presentJSON(m.CustomJSON) {
 		payload.Custom = json.RawMessage(m.CustomJSON.ValueString())
-		set++
 	}
 
-	switch set {
-	case 0:
+	if payload.Base == nil && payload.Custom == nil {
 		diags.AddError(
 			"Invalid agentgateway_model_catalog",
-			"exactly one of base_json or custom_json must be set",
-		)
-		return nil
-	case 1:
-	default:
-		diags.AddError(
-			"Invalid agentgateway_model_catalog",
-			"only one of base_json or custom_json may be set",
+			"at least one of base_json or custom_json must be set",
 		)
 		return nil
 	}

@@ -151,6 +151,69 @@ resource "agentgateway_llm_api_key" "test" {
 	})
 }
 
+// TestAPIKeyEmptyMetadataRejected pins the empty-map rule: the gateway reads an
+// empty metadata map back as unset, so `{}` could never match state and is
+// rejected at plan time with the action to take.
+func TestAPIKeyEmptyMetadataRejected(t *testing.T) {
+	t.Parallel()
+
+	server, _ := agentgatewaytest.New(t)
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testFactories(server.URL),
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "agentgateway_llm_api_key" "test" {
+  key      = "sk-acctest-0010"
+  metadata = {}
+}`,
+				ExpectError: regexp.MustCompile(`omit metadata instead of setting an empty map`),
+			},
+		},
+	})
+}
+
+// TestAPIKeyEmptyKeyMaterialRejected pins that an empty key or key_hash fails at
+// plan time instead of at apply: ExactlyOneOf counts the empty string as set.
+func TestAPIKeyEmptyKeyMaterialRejected(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{
+			name: "empty key",
+			config: `
+resource "agentgateway_llm_api_key" "test" {
+  key = ""
+}`,
+		},
+		{
+			name: "empty key_hash",
+			config: `
+resource "agentgateway_llm_api_key" "test" {
+  key_hash = ""
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := agentgatewaytest.New(t)
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testFactories(server.URL),
+				Steps: []resource.TestStep{
+					{
+						Config:      tt.config,
+						ExpectError: regexp.MustCompile(`string length must be at least 1`),
+					},
+				},
+			})
+		})
+	}
+}
+
 // TestAPIKeyAllowedModelsNullVsEmpty pins spec C13 at the protocol level: an
 // omitted attribute sends no allowedModels key, and an empty list sends [].
 func TestAPIKeyAllowedModelsNullVsEmpty(t *testing.T) {

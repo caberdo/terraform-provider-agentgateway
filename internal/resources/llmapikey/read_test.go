@@ -265,6 +265,56 @@ func TestLLMAPIKeySetValue(t *testing.T) {
 		}
 	})
 
+	t.Run("null and non-string timestamps do not fail the read", func(t *testing.T) {
+		t.Parallel()
+
+		model := newModel()
+		model.CreatedAt = types.StringValue("2026-11-01T00:00:00Z")
+		model.UpdatedAt = types.StringValue("2026-11-02T00:00:00Z")
+
+		var diags diag.Diagnostics
+		model.SetValue(context.Background(), json.RawMessage(`{
+			"key": "sk-acctest-0011",
+			"createdAt": null,
+			"updatedAt": 1735689600
+		}`), &diags)
+
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
+		}
+		if got := model.CreatedAt.ValueString(); got != "2026-11-01T00:00:00Z" {
+			t.Errorf("created_at = %q, want the state value preserved", got)
+		}
+		if got := model.UpdatedAt.ValueString(); got != "2026-11-02T00:00:00Z" {
+			t.Errorf("updated_at = %q, want the state value preserved", got)
+		}
+	})
+
+	t.Run("null timestamps on an unknown value become null", func(t *testing.T) {
+		t.Parallel()
+
+		model := newModel()
+		model.CreatedAt = types.StringUnknown()
+		model.UpdatedAt = types.StringUnknown()
+
+		var diags diag.Diagnostics
+		model.SetValue(context.Background(), json.RawMessage(`{
+			"key": "sk-acctest-0012",
+			"createdAt": null,
+			"updatedAt": null
+		}`), &diags)
+
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned unexpected diagnostics: %v", diags)
+		}
+		if !model.CreatedAt.IsNull() {
+			t.Errorf("created_at = %v, want null", model.CreatedAt)
+		}
+		if !model.UpdatedAt.IsNull() {
+			t.Errorf("updated_at = %v, want null", model.UpdatedAt)
+		}
+	})
+
 	t.Run("invalid JSON is a diagnostic", func(t *testing.T) {
 		t.Parallel()
 

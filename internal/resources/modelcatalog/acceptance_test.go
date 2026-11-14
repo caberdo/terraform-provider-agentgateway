@@ -59,6 +59,16 @@ func TestAccModelCatalogResource(t *testing.T) {
 					resource.TestCheckNoResourceAttr("agentgateway_model_catalog.test", "custom_json"),
 				),
 			},
+			{
+				// A base catalog and an overlay may be set together (§7.15):
+				// the overlay is applied on top of the base catalog.
+				Config: baseAndCustomCatalogConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("agentgateway_model_catalog.test", "id", "default"),
+					resource.TestCheckResourceAttrSet("agentgateway_model_catalog.test", "base_json"),
+					resource.TestCheckResourceAttrSet("agentgateway_model_catalog.test", "custom_json"),
+				),
+			},
 		},
 	})
 }
@@ -84,6 +94,27 @@ resource "agentgateway_model_catalog" "test" {
   base_json = jsonencode({
     metadata  = { generatedAt = "2026-11-14T00:00:00Z" }
     providers = {}
+  })
+}
+`
+
+const baseAndCustomCatalogConfig = `
+resource "agentgateway_model_catalog" "test" {
+  base_json = jsonencode({
+    metadata  = { generatedAt = "2026-11-14T00:00:00Z" }
+    providers = {}
+  })
+
+  custom_json = jsonencode({
+    providers = {
+      internal = {
+        models = {
+          "acme-large" = {
+            rates = { input = "1.00", output = "2.00" }
+          }
+        }
+      }
+    }
   })
 }
 `

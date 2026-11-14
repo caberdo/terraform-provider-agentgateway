@@ -121,6 +121,14 @@ func TestLLMAPIKeyValue(t *testing.T) {
 			}`,
 		},
 		{
+			name: "empty metadata is omitted from the payload",
+			model: apiKeyModel{
+				Key:      types.StringValue("sk-acctest-0009"),
+				Metadata: testMetadata(t, map[string]string{}),
+			},
+			want: `{"key": "sk-acctest-0009"}`,
+		},
+		{
 			name: "reserved metadata prefix is rejected",
 			model: apiKeyModel{
 				Key:      types.StringValue("sk-acctest-0007"),

@@ -8,8 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-// regexpOneAndOnlyOne matches the framework's exactly-one-of diagnostic.
-var regexpOneAndOnlyOne = regexp.MustCompile(`one \(and only one\)`)
+// regexpAtLeastOne matches the framework's at-least-one-of diagnostic.
+var regexpAtLeastOne = regexp.MustCompile(`[Aa]t least one attribute`)
 
 // regexpInvalidJSON matches the jsontypes diagnostic for an unparseable leaf.
 var regexpInvalidJSON = regexp.MustCompile(`(?i)invalid json`)
@@ -71,8 +71,9 @@ resource "agentgateway_model_catalog" "test" {
 	})
 }
 
-// TestModelCatalogRequiresExactlyOneLeaf pins the declarative half of the rule.
-func TestModelCatalogRequiresExactlyOneLeaf(t *testing.T) {
+// TestModelCatalogRequiresAtLeastOneLeaf pins the declarative half of the rule:
+// no leaf is rejected, and both leaves together are accepted (spec §7.15).
+func TestModelCatalogRequiresAtLeastOneLeaf(t *testing.T) {
 	t.Run("no leaf", func(t *testing.T) {
 		t.Parallel()
 
@@ -82,7 +83,7 @@ func TestModelCatalogRequiresExactlyOneLeaf(t *testing.T) {
 			Steps: []resource.TestStep{
 				{
 					Config:      `resource "agentgateway_model_catalog" "test" {}`,
-					ExpectError: regexpOneAndOnlyOne,
+					ExpectError: regexpAtLeastOne,
 				},
 			},
 		})
@@ -98,10 +99,14 @@ func TestModelCatalogRequiresExactlyOneLeaf(t *testing.T) {
 				{
 					Config: `
 resource "agentgateway_model_catalog" "test" {
-  base_json   = jsonencode({ providers = {} })
-  custom_json = jsonencode({ providers = {} })
+  base_json   = jsonencode({ metadata = { generatedAt = "2026-11-14T00:00:00Z" }, providers = {} })
+  custom_json = jsonencode({ providers = { internal = {} } })
 }`,
-					ExpectError: regexpOneAndOnlyOne,
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr("agentgateway_model_catalog.test", "id", "default"),
+						resource.TestCheckResourceAttrSet("agentgateway_model_catalog.test", "base_json"),
+						resource.TestCheckResourceAttrSet("agentgateway_model_catalog.test", "custom_json"),
+					),
 				},
 			},
 		})

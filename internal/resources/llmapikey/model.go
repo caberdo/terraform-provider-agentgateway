@@ -55,6 +55,7 @@ func newSchema() schema.Schema {
 				Sensitive:           true,
 				MarkdownDescription: "Plaintext virtual key. Exactly one of `key` or `key_hash` must be set. Rotating the key is an in-place update; the original key stops authenticating.",
 				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 					stringvalidator.ExactlyOneOf(keyOptions...),
 				},
 			},
@@ -63,6 +64,7 @@ func newSchema() schema.Schema {
 				Sensitive:           true,
 				MarkdownDescription: "SHA-256 hash of the virtual key, in `sha256:<hex>` format. Exactly one of `key` or `key_hash` must be set.",
 				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 					stringvalidator.RegexMatches(apiKeyHashPattern, "must be a sha256 key hash of the form sha256:<64 lowercase hex characters>"),
 					stringvalidator.ExactlyOneOf(keyOptions...),
 				},
@@ -70,9 +72,10 @@ func newSchema() schema.Schema {
 			"metadata": schema.MapAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "Metadata attached to requests authenticated with this key. Replaced, not merged, on update. Keys that start with `agentgateway.dev/` are reserved by the gateway.",
+				MarkdownDescription: "Metadata attached to requests authenticated with this key. Replaced, not merged, on update. Keys that start with `agentgateway.dev/` are reserved by the gateway. Omit the attribute when there is no metadata: an empty map reads back as unset, so `{}` would never match state.",
 				Validators: []validator.Map{
 					metadataPrefixValidator{},
+					metadataNotEmptyValidator{},
 				},
 			},
 			"allowed_models": schema.ListAttribute{
@@ -179,6 +182,40 @@ func (metadataPrefixValidator) ValidateMap(ctx context.Context, req validator.Ma
 			fmt.Sprintf("%s; the gateway manages keys in that namespace itself", err.Error()),
 		)
 	}
+}
+
+// metadataNotEmptyValidator rejects an empty metadata map.
+//
+// The gateway injects managed keys into every key, and a read that strips them
+// back to nothing yields null (spec §7.4). An empty map could therefore never
+// match state, so it is rejected at plan time instead of producing a perpetual
+// diff.
+type metadataNotEmptyValidator struct{}
+
+// Description describes the validation in plain text.
+func (metadataNotEmptyValidator) Description(context.Context) string {
+	return "must not be an empty map; omit metadata instead of setting an empty map"
+}
+
+// MarkdownDescription describes the validation in Markdown.
+func (v metadataNotEmptyValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+// ValidateMap rejects an empty metadata map.
+func (metadataNotEmptyValidator) ValidateMap(_ context.Context, req validator.MapRequest, resp *validator.MapResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if len(req.ConfigValue.Elements()) != 0 {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		req.Path,
+		"Empty metadata",
+		"omit metadata instead of setting an empty map; the gateway reads an empty map back as unset, so `{}` would never match state",
+	)
 }
 
 // apiKeyModel is the Terraform state shape of agentgateway_llm_api_key.
@@ -349,7 +386,9 @@ func (m *apiKeyModel) keyMaterial(payload *apiKeyPayload, diags *diag.Diagnostic
 
 // metadataValue encodes metadata. An empty map is omitted: the gateway adds its
 // own managed keys to every key, so an empty map is indistinguishable from an
-// unset one (spec §7.4).
+// unset one (spec §7.4). The schema rejects `{}` at plan time for that reason;
+// this branch keeps a hand-built model from sending a value that could never
+// read back.
 func (m *apiKeyModel) metadataValue(ctx context.Context, payload *apiKeyPayload, diags *diag.Diagnostics) bool {
 	if !isSet(m.Metadata) {
 		return true
@@ -496,15 +535,16 @@ func encodeBudget(ctx context.Context, budget budgetModel, budgetPath path.Path,
 }
 
 // apiKeyValue is the wire shape of an llm.apiKey value. RawMessage fields keep
-// an absent field distinct from an explicit null.
+// an absent field distinct from an explicit null, and keep a surprising value
+// (a null or non-string timestamp) from failing the whole decode.
 type apiKeyValue struct {
 	Key           json.RawMessage `json:"key"`
 	KeyHash       json.RawMessage `json:"keyHash"`
 	Metadata      json.RawMessage `json:"metadata"`
 	AllowedModels json.RawMessage `json:"allowedModels"`
 	Budgets       json.RawMessage `json:"budgets"`
-	CreatedAt     string          `json:"createdAt"`
-	UpdatedAt     string          `json:"updatedAt"`
+	CreatedAt     json.RawMessage `json:"createdAt"`
+	UpdatedAt     json.RawMessage `json:"updatedAt"`
 }
 
 // apiKeyBudgetValue is one budget as the gateway returns it. Amount is decoded
@@ -539,7 +579,7 @@ func (m *apiKeyModel) SetValue(ctx context.Context, value json.RawMessage, diags
 		return
 	}
 
-	m.setTimestamps(value, decoded)
+	m.setTimestamps(decoded)
 
 	stripped := configresource.StripManagedMetadata(value)
 	var body apiKeyValue
@@ -560,9 +600,13 @@ func (m *apiKeyModel) SetValue(ctx context.Context, value json.RawMessage, diags
 // setTimestamps stores created_at and updated_at when the gateway reports them.
 // The config API carries the creation time inside the value, either as a
 // top-level field or as a managed metadata key.
-func (m *apiKeyModel) setTimestamps(value json.RawMessage, decoded apiKeyValue) {
-	created := decoded.CreatedAt
-	updated := decoded.UpdatedAt
+//
+// A null or non-string timestamp is ignored rather than treated as an error:
+// the attribute is computed, so an absent or unusable value keeps the state
+// value instead of failing the whole read.
+func (m *apiKeyModel) setTimestamps(decoded apiKeyValue) {
+	created := stringValue(decoded.CreatedAt)
+	updated := stringValue(decoded.UpdatedAt)
 
 	if created == "" || updated == "" {
 		var metadata map[string]string
@@ -836,6 +880,19 @@ func isSet(value attr.Value) bool {
 // isPresent reports whether a raw JSON field carries a value other than null.
 func isPresent(raw json.RawMessage) bool {
 	return len(raw) > 0 && string(raw) != "null"
+}
+
+// stringValue decodes a JSON string field, returning "" for null or any other
+// JSON type so a surprising timestamp cannot fail a read.
+func stringValue(raw json.RawMessage) string {
+	if !isPresent(raw) {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
 }
 
 // unquote decodes a JSON string field.

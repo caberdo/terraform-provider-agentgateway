@@ -12,7 +12,8 @@ import (
 )
 
 // TestModelCatalogValue pins the value object of agentgateway_model_catalog:
-// exactly one JSON leaf, inserted verbatim under base or custom (spec §7.15).
+// at least one JSON leaf, inserted verbatim under base and/or custom
+// (spec §7.15).
 func TestModelCatalogValue(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -48,15 +49,18 @@ func TestModelCatalogValue(t *testing.T) {
 		{
 			name:    "no leaf",
 			model:   modelCatalogModel{},
-			wantErr: "exactly one of base_json or custom_json must be set",
+			wantErr: "at least one of base_json or custom_json must be set",
 		},
 		{
-			name: "both leaves",
+			name: "base catalog with an overlay",
 			model: modelCatalogModel{
-				BaseJSON:   jsontypes.NewNormalizedValue(`{"providers":{}}`),
-				CustomJSON: jsontypes.NewNormalizedValue(`{"providers":{}}`),
+				BaseJSON:   jsontypes.NewNormalizedValue(`{"metadata":{"generatedAt":"2026-11-14T00:00:00Z"},"providers":{}}`),
+				CustomJSON: jsontypes.NewNormalizedValue(`{"providers":{"internal":{}}}`),
 			},
-			wantErr: "only one of base_json or custom_json may be set",
+			want: `{
+				"base": {"metadata": {"generatedAt": "2026-11-14T00:00:00Z"}, "providers": {}},
+				"custom": {"providers": {"internal": {}}}
+			}`,
 		},
 	}
 
@@ -102,9 +106,9 @@ func TestModelCatalogID(t *testing.T) {
 	}
 }
 
-// TestModelCatalogSchemaRequiresExactlyOneLeaf pins the declarative half of the
-// rule: the schema declares both leaves with the same exactly-one validator.
-func TestModelCatalogSchemaRequiresExactlyOneLeaf(t *testing.T) {
+// TestModelCatalogSchemaRequiresAtLeastOneLeaf pins the declarative half of the
+// rule: both leaves are optional, normalized JSON, and either may be omitted.
+func TestModelCatalogSchemaRequiresAtLeastOneLeaf(t *testing.T) {
 	t.Parallel()
 
 	catalogSchema := newSchema()
