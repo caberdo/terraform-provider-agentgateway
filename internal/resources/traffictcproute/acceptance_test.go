@@ -48,7 +48,7 @@ func TestAccTrafficTCPRoute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "hostnames.#", "1"),
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.#", "1"),
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.weight", "1"),
-					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.json", `{"host":"127.0.0.1:5432"}`),
+					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.host", "127.0.0.1:5432"),
 				),
 			},
 			{
@@ -89,7 +89,7 @@ func TestTrafficTCPRouteCRUD(t *testing.T) {
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "gateways.#", "1"),
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "hostnames.#", "1"),
 					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.weight", "1"),
-					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.json", `{"host":"127.0.0.1:5432"}`),
+					resource.TestCheckResourceAttr(accTCPRouteType+".test", "backends.0.host", "127.0.0.1:5432"),
 				),
 			},
 			{
@@ -117,12 +117,9 @@ resource "agentgateway_traffic_tcp_route" "test" {
   rule_name = "tcp"
   hostnames = ["tcp.example.com"]
 
-  # The gateway's TCP backend host is a single "host:port" string, which the
-  # json variant carries verbatim.
+  # The gateway's TCP backend host is a single "host:port" string.
   backends {
-    json = jsonencode({
-      host = "127.0.0.1:5432"
-    })
+    host = "127.0.0.1:5432"
   }
 }
 `

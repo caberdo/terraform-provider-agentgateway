@@ -18,26 +18,18 @@ import (
 
 // backendModel is one destination of a TCP route. Exactly one variant may be
 // set.
+//
+// Upstream (LocalTCPRouteBackend) models host and backend as bare strings:
+// `{"host":"example.com:8000"}` and `{"backend":"name"}`.
 type backendModel struct {
 	Weight  types.Int64          `tfsdk:"weight"`
-	Host    []hostModel          `tfsdk:"host"`
-	Backend []backendRefModel    `tfsdk:"backend"`
+	Host    types.String         `tfsdk:"host"`
+	Backend types.String         `tfsdk:"backend"`
 	Service jsontypes.Normalized `tfsdk:"service_json"`
 	MCP     jsontypes.Normalized `tfsdk:"mcp_json"`
 	AI      jsontypes.Normalized `tfsdk:"ai_json"`
+	Dynamic jsontypes.Normalized `tfsdk:"dynamic_json"`
 	JSON    jsontypes.Normalized `tfsdk:"json"`
-}
-
-// hostModel is a direct host backend.
-type hostModel struct {
-	Host types.String `tfsdk:"host"`
-	Port types.Int64  `tfsdk:"port"`
-}
-
-// backendRefModel references another config resource.
-type backendRefModel struct {
-	Name      types.String `tfsdk:"name"`
-	Namespace types.String `tfsdk:"namespace"`
 }
 
 // model is the Terraform representation of a traffic.tcpRoute resource.
@@ -83,24 +75,13 @@ type tcpRoutePayload struct {
 // backendPayload is the value object for a known backend variant. A generic
 // json backend is merged into this object at the top level instead.
 type backendPayload struct {
-	Weight  *int64             `json:"weight,omitempty"`
-	Host    *hostPayload       `json:"host,omitempty"`
-	Backend *backendRefPayload `json:"backend,omitempty"`
-	Service json.RawMessage    `json:"service,omitempty"`
-	MCP     json.RawMessage    `json:"mcp,omitempty"`
-	AI      json.RawMessage    `json:"ai,omitempty"`
-}
-
-// hostPayload is the value object for a direct host backend.
-type hostPayload struct {
-	Host string `json:"host"`
-	Port int64  `json:"port"`
-}
-
-// backendRefPayload is the value object for a backend reference.
-type backendRefPayload struct {
-	Name      string  `json:"name"`
-	Namespace *string `json:"namespace,omitempty"`
+	Weight  *int64          `json:"weight,omitempty"`
+	Host    *string         `json:"host,omitempty"`
+	Backend *string         `json:"backend,omitempty"`
+	Service json.RawMessage `json:"service,omitempty"`
+	MCP     json.RawMessage `json:"mcp,omitempty"`
+	AI      json.RawMessage `json:"ai,omitempty"`
+	Dynamic json.RawMessage `json:"dynamic,omitempty"`
 }
 
 // tcpRouteValue is the wire representation decoded from the API.
@@ -112,26 +93,6 @@ type tcpRouteValue struct {
 	Hostnames *[]string          `json:"hostnames"`
 	Backends  *[]json.RawMessage `json:"backends"`
 	Policies  json.RawMessage    `json:"policies"`
-}
-
-// backendValue is the known part of a backend. Unknown keys (aws, dynamic,
-// internal, routeGroup) are collected into the generic json variant.
-type backendValue struct {
-	Weight  *int64           `json:"weight"`
-	Host    *hostValue       `json:"host"`
-	Backend *backendRefValue `json:"backend"`
-}
-
-// hostValue is the wire representation of a direct host backend.
-type hostValue struct {
-	Host *string `json:"host"`
-	Port *int64  `json:"port"`
-}
-
-// backendRefValue is the wire representation of a backend reference.
-type backendRefValue struct {
-	Name      *string `json:"name"`
-	Namespace *string `json:"namespace"`
 }
 
 // Kind returns the config resource kind.
@@ -185,33 +146,12 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 	for i, backend := range m.Backends {
 		backendPath := path.Root("backends").AtListIndex(i)
 
-		if len(backend.Host) > 1 {
-			diags.AddAttributeError(
-				backendPath.AtName("host"),
-				"Invalid traffic TCP route backend",
-				"at most one host block may be set per backend",
-			)
-		}
-		if len(backend.Backend) > 1 {
-			diags.AddAttributeError(
-				backendPath.AtName("backend"),
-				"Invalid traffic TCP route backend",
-				"at most one backend block may be set per backend",
-			)
-		}
-
-		variants := countSet(backend.Service, backend.MCP, backend.AI, backend.JSON)
-		if len(backend.Host) > 0 {
-			variants++
-		}
-		if len(backend.Backend) > 0 {
-			variants++
-		}
+		variants := countSet(backend.Host, backend.Backend, backend.Service, backend.MCP, backend.AI, backend.Dynamic, backend.JSON)
 		if variants > 1 {
 			diags.AddAttributeError(
 				backendPath,
 				"Invalid traffic TCP route backend",
-				"exactly one of host, backend, service_json, mcp_json, ai_json or json may be set per backend",
+				"exactly one of host, backend, service_json, mcp_json, ai_json, dynamic_json or json may be set per backend",
 			)
 		}
 
@@ -226,18 +166,15 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 			Service: rawJSON(backend.Service),
 			MCP:     rawJSON(backend.MCP),
 			AI:      rawJSON(backend.AI),
+			Dynamic: rawJSON(backend.Dynamic),
 		}
-		if len(backend.Host) == 1 {
-			payload.Host = &hostPayload{
-				Host: backend.Host[0].Host.ValueString(),
-				Port: backend.Host[0].Port.ValueInt64(),
-			}
+		if isSet(backend.Host) {
+			host := backend.Host.ValueString()
+			payload.Host = &host
 		}
-		if len(backend.Backend) == 1 {
-			payload.Backend = &backendRefPayload{
-				Name:      backend.Backend[0].Name.ValueString(),
-				Namespace: stringPointer(backend.Backend[0].Namespace),
-			}
+		if isSet(backend.Backend) {
+			name := backend.Backend.ValueString()
+			payload.Backend = &name
 		}
 
 		if isSet(backend.JSON) {
@@ -333,15 +270,13 @@ func (m *model) SetValue(ctx context.Context, value json.RawMessage, diags *diag
 	}
 }
 
-// decodeBackend converts one wire backend into the model. Keys the typed schema
-// does not know are collected into the generic json variant so the resource
-// reads back fully.
+// decodeBackend converts one wire backend into the model.
 //
-// The gateway accepts two shapes for the host and backend variants: the object
-// form this provider writes ({"host":{"host":"h","port":1}}) and the string form
-// a TCP route uses ({"host":"h:1"}, {"backend":"name"}). A value in the string
-// form cannot be represented by the typed blocks, so it stays whole in the
-// generic json variant instead of failing the read.
+// Upstream (LocalTCPRouteBackend) writes host and backend as bare strings
+// ({"host":"h:1"}, {"backend":"name"}); those populate the typed attributes.
+// Keys the typed schema does not know are collected into the generic json
+// variant so the resource reads back fully. An older object form of host or
+// backend is treated as absent and therefore kept whole in the json variant.
 func decodeBackend(raw json.RawMessage) (backendModel, error) {
 	var body map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &body); err != nil {
@@ -351,54 +286,49 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 		return backendModel{}, errors.New("backend is not a JSON object")
 	}
 
-	backend, err := decodeTypedBackend(raw, body)
-	if err == nil {
-		return backend, nil
+	backend := backendModel{}
+	if rawWeight, ok := body["weight"]; ok && !isJSONNull(rawWeight) {
+		var weight int64
+		if err := json.Unmarshal(rawWeight, &weight); err != nil {
+			return backendModel{}, err
+		}
+		backend.Weight = types.Int64Value(weight)
 	}
-	return decodeOpaqueBackend(body)
-}
 
-// decodeTypedBackend decodes the object form of a backend.
-func decodeTypedBackend(raw json.RawMessage, body map[string]json.RawMessage) (backendModel, error) {
-	var decoded backendValue
-	if err := json.Unmarshal(raw, &decoded); err != nil {
+	host, typedHost, err := stringLeaf(body["host"])
+	if err != nil {
 		return backendModel{}, err
 	}
+	if typedHost {
+		backend.Host = types.StringValue(host)
+	}
 
-	backend := backendModel{}
-	if decoded.Weight != nil {
-		backend.Weight = types.Int64Value(*decoded.Weight)
+	reference, typedBackend, err := stringLeaf(body["backend"])
+	if err != nil {
+		return backendModel{}, err
 	}
-	if decoded.Host != nil {
-		host := hostModel{}
-		if decoded.Host.Host != nil {
-			host.Host = types.StringValue(*decoded.Host.Host)
-		}
-		if decoded.Host.Port != nil {
-			host.Port = types.Int64Value(*decoded.Host.Port)
-		}
-		backend.Host = []hostModel{host}
-	}
-	if decoded.Backend != nil {
-		ref := backendRefModel{}
-		if decoded.Backend.Name != nil {
-			ref.Name = types.StringValue(*decoded.Backend.Name)
-		}
-		if decoded.Backend.Namespace != nil {
-			ref.Namespace = types.StringValue(*decoded.Backend.Namespace)
-		}
-		backend.Backend = []backendRefModel{ref}
+	if typedBackend {
+		backend.Backend = types.StringValue(reference)
 	}
 
 	backend.Service = normalizedFromRaw(body["service"])
 	backend.MCP = normalizedFromRaw(body["mcp"])
 	backend.AI = normalizedFromRaw(body["ai"])
+	backend.Dynamic = normalizedFromRaw(body["dynamic"])
 
 	extras := make(map[string]json.RawMessage)
 	for key, value := range body {
 		switch key {
-		case "weight", "host", "backend", "service", "mcp", "ai":
+		case "weight", "service", "mcp", "ai", "dynamic":
 			continue
+		case "host":
+			if typedHost {
+				continue
+			}
+		case "backend":
+			if typedBackend {
+				continue
+			}
 		}
 		extras[key] = value
 	}
@@ -413,32 +343,19 @@ func decodeTypedBackend(raw json.RawMessage, body map[string]json.RawMessage) (b
 	return backend, nil
 }
 
-// decodeOpaqueBackend keeps a backend the typed blocks cannot represent in the
-// generic json variant, including its weight.
-func decodeOpaqueBackend(body map[string]json.RawMessage) (backendModel, error) {
-	backend := backendModel{}
-	if rawWeight, ok := body["weight"]; ok && !isJSONNull(rawWeight) {
-		var weight int64
-		if err := json.Unmarshal(rawWeight, &weight); err != nil {
-			return backendModel{}, err
-		}
-		backend.Weight = types.Int64Value(weight)
+// stringLeaf reads a bare-string leaf. It reports false when the leaf is absent
+// or null, and also when it holds another JSON type, so a value the typed
+// attribute cannot represent is left to the generic json variant instead of
+// failing the read.
+func stringLeaf(raw json.RawMessage) (string, bool, error) {
+	if isJSONNull(raw) {
+		return "", false, nil
 	}
-
-	extras := make(map[string]json.RawMessage, len(body))
-	for key, value := range body {
-		if key == "weight" {
-			continue
-		}
-		extras[key] = value
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", false, nil
 	}
-	encoded, err := json.Marshal(extras)
-	if err != nil {
-		return backendModel{}, err
-	}
-	backend.JSON = jsontypes.NewNormalizedValue(string(encoded))
-
-	return backend, nil
+	return value, true, nil
 }
 
 // stringSlicePointer converts an optional Terraform string list to a payload

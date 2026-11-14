@@ -63,29 +63,29 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 			name: "backend host",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
-					Host: []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}},
+					Host: types.StringValue("127.0.0.1:8080"),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":1,"host":{"host":"127.0.0.1","port":8080}}]}`,
+			want: `{"name":"r","backends":[{"weight":1,"host":"127.0.0.1:8080"}]}`,
 		},
 		{
 			name: "backend reference with weight",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
 					Weight:  types.Int64Value(2),
-					Backend: []backendRefModel{{Name: types.StringValue("svc"), Namespace: types.StringValue("default")}},
+					Backend: types.StringValue("svc"),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":2,"backend":{"name":"svc","namespace":"default"}}]}`,
+			want: `{"name":"r","backends":[{"weight":2,"backend":"svc"}]}`,
 		},
 		{
 			name: "service json backend",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{
-					Service: jsonValue(`{"name":"svc","namespace":"default","port":8080}`),
+					Service: jsonValue(`{"name":"default/svc","port":8080}`),
 				}}
 			},
-			want: `{"name":"r","backends":[{"weight":1,"service":{"name":"svc","namespace":"default","port":8080}}]}`,
+			want: `{"name":"r","backends":[{"weight":1,"service":{"name":"default/svc","port":8080}}]}`,
 		},
 		{
 			name: "mcp json backend",
@@ -102,6 +102,13 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 			want: `{"name":"r","backends":[{"weight":1,"ai":{"provider":"openai"}}]}`,
 		},
 		{
+			name: "dynamic json backend",
+			mutate: func(t *testing.T, m *model) {
+				m.Backends = []backendModel{{Dynamic: jsonValue(`{"target":"source.address"}`)}}
+			},
+			want: `{"name":"r","backends":[{"weight":1,"dynamic":{"target":"source.address"}}]}`,
+		},
+		{
 			name: "generic json backend",
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{JSON: jsonValue(`{"aws":{"region":"us-east-1"}}`)}}
@@ -111,9 +118,9 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 		{
 			name: "policies",
 			mutate: func(t *testing.T, m *model) {
-				m.Policies = jsonValue(`{"cors":{"allowOrigins":["https://example.com"]}}`)
+				m.Policies = jsonValue(`{"backendTLS":{"hostname":"db.example.com"}}`)
 			},
-			want: `{"name":"r","policies":{"cors":{"allowOrigins":["https://example.com"]}}}`,
+			want: `{"name":"r","policies":{"backendTLS":{"hostname":"db.example.com"}}}`,
 		},
 		{
 			name: "null json leaves are omitted",
@@ -123,6 +130,7 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 					Service: jsontypes.NewNormalizedNull(),
 					MCP:     jsontypes.NewNormalizedNull(),
 					AI:      jsontypes.NewNormalizedNull(),
+					Dynamic: jsontypes.NewNormalizedNull(),
 					JSON:    jsontypes.NewNormalizedNull(),
 				}}
 			},
@@ -153,16 +161,14 @@ func TestTrafficTCPRouteValue(t *testing.T) {
 func TestTrafficTCPRouteBackendWeightDefaultsToOne(t *testing.T) {
 	m := newModel()
 	m.Name = types.StringValue("r")
-	m.Backends = []backendModel{{
-		Host: []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}},
-	}}
+	m.Backends = []backendModel{{Host: types.StringValue("127.0.0.1:8080")}}
 
 	var diags diag.Diagnostics
 	got := m.Value(context.Background(), &diags)
 	if diags.HasError() {
 		t.Fatalf("Value() returned diagnostics: %v", diags)
 	}
-	want := `{"name":"r","backends":[{"weight":1,"host":{"host":"127.0.0.1","port":8080}}]}`
+	want := `{"name":"r","backends":[{"weight":1,"host":"127.0.0.1:8080"}]}`
 	if string(got) != want {
 		t.Errorf("Value() = %s, want %s", got, want)
 	}
@@ -179,19 +185,24 @@ func TestTrafficTCPRouteBackendVariantIsExclusive(t *testing.T) {
 		{
 			name: "host and service",
 			first: func(b *backendModel) {
-				b.Host = []hostModel{{Host: types.StringValue("127.0.0.1"), Port: types.Int64Value(8080)}}
+				b.Host = types.StringValue("127.0.0.1:8080")
 			},
 			second: func(b *backendModel) { b.Service = jsonValue(`{"name":"svc"}`) },
 		},
 		{
 			name:   "backend reference and generic json",
-			first:  func(b *backendModel) { b.Backend = []backendRefModel{{Name: types.StringValue("svc")}} },
+			first:  func(b *backendModel) { b.Backend = types.StringValue("svc") },
 			second: func(b *backendModel) { b.JSON = jsonValue(`{"internal":{}}`) },
 		},
 		{
 			name:   "mcp and ai",
 			first:  func(b *backendModel) { b.MCP = jsonValue(`{"targets":[]}`) },
 			second: func(b *backendModel) { b.AI = jsonValue(`{"provider":"openai"}`) },
+		},
+		{
+			name:   "dynamic and host",
+			first:  func(b *backendModel) { b.Dynamic = jsonValue(`{"target":"source.address"}`) },
+			second: func(b *backendModel) { b.Host = types.StringValue("127.0.0.1:8080") },
 		},
 	}
 

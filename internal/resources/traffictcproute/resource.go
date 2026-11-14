@@ -5,7 +5,6 @@ import (
 	"github.com/caberdo/terraform-provider-agentgateway/internal/resourceutil"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,6 +20,7 @@ var backendOptions = []path.Expression{
 	path.MatchRelative().AtParent().AtName("service_json"),
 	path.MatchRelative().AtParent().AtName("mcp_json"),
 	path.MatchRelative().AtParent().AtName("ai_json"),
+	path.MatchRelative().AtParent().AtName("dynamic_json"),
 	path.MatchRelative().AtParent().AtName("json"),
 }
 
@@ -89,10 +89,24 @@ func resourceSchema() schema.Schema {
 								int64validator.AtLeast(0),
 							},
 						},
+						"host": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "Backend address as `host:port`, for example `postgres.example.com:5432`. Exactly one backend variant may be set.",
+							Validators: []validator.String{
+								stringvalidator.ExactlyOneOf(backendOptions...),
+							},
+						},
+						"backend": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "Name of a backend defined in the gateway's top-level backends list. Exactly one backend variant may be set.",
+							Validators: []validator.String{
+								stringvalidator.ExactlyOneOf(backendOptions...),
+							},
+						},
 						"service_json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Service backend as JSON. Exactly one backend variant may be set.",
+							MarkdownDescription: "Service backend as JSON (`{name: \"<namespace>/<hostname>\", port: <port>}`). Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
@@ -113,55 +127,20 @@ func resourceSchema() schema.Schema {
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
-						"json": schema.StringAttribute{
+						"dynamic_json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Any other backend as JSON (`aws`, `dynamic`, `internal`, `routeGroup`). Exactly one backend variant may be set.",
+							MarkdownDescription: "Dynamic backend as JSON (`{target: <CEL expression>}`). Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
-					},
-					Blocks: map[string]schema.Block{
-						"host": schema.ListNestedBlock{
-							MarkdownDescription: "Direct host backend.",
-							Validators: []validator.List{
-								listvalidator.SizeAtMost(1),
-								listvalidator.ExactlyOneOf(backendOptions...),
-							},
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"host": schema.StringAttribute{
-										Required:            true,
-										MarkdownDescription: "Hostname or IP address.",
-									},
-									"port": schema.Int64Attribute{
-										Required:            true,
-										MarkdownDescription: "TCP port.",
-										Validators: []validator.Int64{
-											int64validator.Between(0, 65535),
-										},
-									},
-								},
-							},
-						},
-						"backend": schema.ListNestedBlock{
-							MarkdownDescription: "Reference to another config resource.",
-							Validators: []validator.List{
-								listvalidator.SizeAtMost(1),
-								listvalidator.ExactlyOneOf(backendOptions...),
-							},
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"name": schema.StringAttribute{
-										Required:            true,
-										MarkdownDescription: "Name of the referenced resource.",
-									},
-									"namespace": schema.StringAttribute{
-										Optional:            true,
-										MarkdownDescription: "Namespace of the referenced resource.",
-									},
-								},
+						"json": schema.StringAttribute{
+							Optional:            true,
+							CustomType:          jsontypes.NormalizedType{},
+							MarkdownDescription: "Any other backend as JSON (`aws`, `internal`, `routeGroup`). Exactly one backend variant may be set.",
+							Validators: []validator.String{
+								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
 						},
 					},

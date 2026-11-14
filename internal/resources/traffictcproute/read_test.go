@@ -19,14 +19,15 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			"ruleName": "api-rule",
 			"hostnames": ["example.com", "*.example.org"],
 			"backends": [
-				{"weight": 2, "host": {"host": "127.0.0.1", "port": 8080}},
-				{"weight": 1, "backend": {"name": "svc", "namespace": "default"}},
-				{"weight": 1, "service": {"name": "svc"}},
+				{"weight": 2, "host": "127.0.0.1:8080"},
+				{"weight": 1, "backend": "svc"},
+				{"weight": 1, "service": {"name": "default/svc", "port": 8080}},
 				{"weight": 1, "mcp": {"targets": []}},
 				{"weight": 1, "ai": {"provider": "openai"}},
+				{"weight": 1, "dynamic": {"target": "source.address"}},
 				{"weight": 3, "aws": {"region": "us-east-1"}}
 			],
-			"policies": {"cors": {"allowOrigins": ["https://example.com"]}}
+			"policies": {"backendTLS": {"hostname": "db.example.com"}}
 		}`
 
 		m := newModel()
@@ -62,17 +63,17 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			t.Errorf("Hostnames = %v, want [example.com *.example.org]", hostnames)
 		}
 
-		if len(m.Backends) != 6 {
-			t.Fatalf("len(Backends) = %d, want 6", len(m.Backends))
+		if len(m.Backends) != 7 {
+			t.Fatalf("len(Backends) = %d, want 7", len(m.Backends))
 		}
 		if got := m.Backends[0].Weight.ValueInt64(); got != 2 {
 			t.Errorf("backend[0] Weight = %d, want 2", got)
 		}
-		if len(m.Backends[0].Host) != 1 || m.Backends[0].Host[0].Host.ValueString() != "127.0.0.1" || m.Backends[0].Host[0].Port.ValueInt64() != 8080 {
-			t.Errorf("backend[0] Host = %+v, want 127.0.0.1:8080", m.Backends[0].Host)
+		if got := m.Backends[0].Host.ValueString(); got != "127.0.0.1:8080" {
+			t.Errorf("backend[0] Host = %q, want 127.0.0.1:8080", got)
 		}
-		if len(m.Backends[1].Backend) != 1 || m.Backends[1].Backend[0].Name.ValueString() != "svc" || m.Backends[1].Backend[0].Namespace.ValueString() != "default" {
-			t.Errorf("backend[1] Backend = %+v, want svc/default", m.Backends[1].Backend)
+		if got := m.Backends[1].Backend.ValueString(); got != "svc" {
+			t.Errorf("backend[1] Backend = %q, want svc", got)
 		}
 
 		jsonFields := []struct {
@@ -80,11 +81,12 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			got  jsontypes.Normalized
 			want string
 		}{
-			{"backend[2].Service", m.Backends[2].Service, `{"name": "svc"}`},
+			{"backend[2].Service", m.Backends[2].Service, `{"name": "default/svc", "port": 8080}`},
 			{"backend[3].MCP", m.Backends[3].MCP, `{"targets": []}`},
 			{"backend[4].AI", m.Backends[4].AI, `{"provider": "openai"}`},
-			{"backend[5].JSON", m.Backends[5].JSON, `{"aws":{"region":"us-east-1"}}`},
-			{"Policies", m.Policies, `{"cors": {"allowOrigins": ["https://example.com"]}}`},
+			{"backend[5].Dynamic", m.Backends[5].Dynamic, `{"target": "source.address"}`},
+			{"backend[6].JSON", m.Backends[6].JSON, `{"aws":{"region":"us-east-1"}}`},
+			{"Policies", m.Policies, `{"backendTLS": {"hostname": "db.example.com"}}`},
 		}
 		for _, field := range jsonFields {
 			if field.got.IsNull() {
@@ -132,8 +134,8 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 		m.Hostnames = stringList(t, "example.com")
 		m.Namespace = types.StringValue("old-ns")
 		m.RuleName = types.StringValue("old-rule")
-		m.Backends = []backendModel{{Host: []hostModel{{Host: types.StringValue("old"), Port: types.Int64Value(1)}}}}
-		m.Policies = jsonValue(`{"cors":{}}`)
+		m.Backends = []backendModel{{Host: types.StringValue("old:1")}}
+		m.Policies = jsonValue(`{"backendTLS":{}}`)
 
 		var diags diag.Diagnostics
 		m.SetValue(context.Background(), []byte(`{"name":"r"}`), &diags)
@@ -165,10 +167,10 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 		if len(hostnames) != 1 || hostnames[0] != "example.com" {
 			t.Errorf("Hostnames = %v, want [example.com]", hostnames)
 		}
-		if len(m.Backends) != 1 || m.Backends[0].Host[0].Host.ValueString() != "old" {
+		if len(m.Backends) != 1 || m.Backends[0].Host.ValueString() != "old:1" {
 			t.Errorf("Backends = %+v, want the state value preserved", m.Backends)
 		}
-		if got := m.Policies.ValueString(); got != `{"cors":{}}` {
+		if got := m.Policies.ValueString(); got != `{"backendTLS":{}}` {
 			t.Errorf("Policies = %s, want the state value preserved", got)
 		}
 	})
@@ -177,7 +179,7 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 		m := newModel()
 		m.Gateways = stringList(t, "default")
 		m.Hostnames = stringList(t, "example.com")
-		m.Backends = []backendModel{{Host: []hostModel{{Host: types.StringValue("old"), Port: types.Int64Value(1)}}}}
+		m.Backends = []backendModel{{Host: types.StringValue("old:1")}}
 
 		var diags diag.Diagnostics
 		m.SetValue(context.Background(), []byte(`{"name":"r","gateways":[],"hostnames":[],"backends":[]}`), &diags)
@@ -213,7 +215,7 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 	t.Run("server returned weight is stored", func(t *testing.T) {
 		m := newModel()
 		var diags diag.Diagnostics
-		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":4,"host":{"host":"h","port":1}}]}`), &diags)
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":4,"host":"h:1"}]}`), &diags)
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned diagnostics: %v", diags)
 		}
@@ -225,10 +227,31 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 		}
 	})
 
-	t.Run("string host backend stays in the json variant", func(t *testing.T) {
+	t.Run("bare string host and backend are typed", func(t *testing.T) {
 		m := newModel()
 		var diags diag.Diagnostics
-		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":2,"host":"tcp.example:80"}]}`), &diags)
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":2,"host":"tcp.example:80"},{"backend":"postgres"}]}`), &diags)
+		if diags.HasError() {
+			t.Fatalf("SetValue() returned diagnostics: %v", diags)
+		}
+		if len(m.Backends) != 2 {
+			t.Fatalf("len(Backends) = %d, want 2", len(m.Backends))
+		}
+		if got := m.Backends[0].Host.ValueString(); got != "tcp.example:80" {
+			t.Errorf("Host = %q, want tcp.example:80", got)
+		}
+		if !m.Backends[0].JSON.IsNull() {
+			t.Errorf("JSON = %s, want null for a typed host", m.Backends[0].JSON.ValueString())
+		}
+		if got := m.Backends[1].Backend.ValueString(); got != "postgres" {
+			t.Errorf("Backend = %q, want postgres", got)
+		}
+	})
+
+	t.Run("object host form stays in the json variant", func(t *testing.T) {
+		m := newModel()
+		var diags diag.Diagnostics
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"weight":2,"host":{"host":"tcp.example","port":80}}]}`), &diags)
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned diagnostics: %v", diags)
 		}
@@ -236,24 +259,21 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			t.Fatalf("len(Backends) = %d, want 1", len(m.Backends))
 		}
 		backend := m.Backends[0]
-		if len(backend.Host) != 0 {
-			t.Errorf("Host = %+v, want the string form kept in json", backend.Host)
+		if !backend.Host.IsNull() {
+			t.Errorf("Host = %q, want the old object form treated as absent", backend.Host.ValueString())
 		}
 		if got := backend.Weight.ValueInt64(); got != 2 {
 			t.Errorf("Weight = %d, want 2", got)
 		}
-		if backend.JSON.IsNull() {
-			t.Fatal("JSON is null, want the string host form")
-		}
-		if got, want := backend.JSON.ValueString(), `{"host":"tcp.example:80"}`; got != want {
+		if got, want := backend.JSON.ValueString(), `{"host":{"host":"tcp.example","port":80}}`; got != want {
 			t.Errorf("JSON = %s, want %s", got, want)
 		}
 	})
 
-	t.Run("string backend reference stays in the json variant", func(t *testing.T) {
+	t.Run("object backend form stays in the json variant", func(t *testing.T) {
 		m := newModel()
 		var diags diag.Diagnostics
-		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"backend":"postgres"}]}`), &diags)
+		m.SetValue(context.Background(), []byte(`{"name":"r","backends":[{"backend":{"name":"postgres"}}]}`), &diags)
 		if diags.HasError() {
 			t.Fatalf("SetValue() returned diagnostics: %v", diags)
 		}
@@ -261,10 +281,10 @@ func TestTrafficTCPRouteSetValue(t *testing.T) {
 			t.Fatalf("len(Backends) = %d, want 1", len(m.Backends))
 		}
 		backend := m.Backends[0]
-		if len(backend.Backend) != 0 {
-			t.Errorf("Backend = %+v, want the string form kept in json", backend.Backend)
+		if !backend.Backend.IsNull() {
+			t.Errorf("Backend = %q, want the old object form treated as absent", backend.Backend.ValueString())
 		}
-		if got, want := backend.JSON.ValueString(), `{"backend":"postgres"}`; got != want {
+		if got, want := backend.JSON.ValueString(), `{"backend":{"name":"postgres"}}`; got != want {
 			t.Errorf("JSON = %s, want %s", got, want)
 		}
 	})
