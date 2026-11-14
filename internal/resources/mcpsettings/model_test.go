@@ -2,6 +2,7 @@ package mcpsettings
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -66,6 +67,13 @@ func TestMCPSettingsValue(t *testing.T) {
 			want:  `{"gateways":[]}`,
 		},
 		{
+			// The gateway UI writes an empty gateways list next to port, so an
+			// empty list must not be treated as a conflicting value.
+			name:  "empty gateways with port",
+			model: &model{Gateways: types.ListValueMust(types.StringType, []attr.Value{}), Port: int64Value(8080)},
+			want:  `{"gateways":[],"port":8080}`,
+		},
+		{
 			name:  "dns rebinding protection explicitly disabled",
 			model: &model{DNSRebindingProtection: boolValue(false)},
 			want:  `{"dnsRebindingProtection":false}`,
@@ -126,6 +134,55 @@ func TestMCPSettingsValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMCPSettingsPortConflictNeedsNonEmptyGateways pins the exact boundary of
+// the port/gateways conflict: an empty gateways list is what the gateway UI
+// writes next to `port`, so it is accepted; a populated list is a real
+// conflict, and the diagnostic names both attributes.
+func TestMCPSettingsPortConflictNeedsNonEmptyGateways(t *testing.T) {
+	t.Run("empty gateways with port is accepted", func(t *testing.T) {
+		m := &model{
+			Gateways: types.ListValueMust(types.StringType, []attr.Value{}),
+			Port:     int64Value(8080),
+		}
+
+		var diags diag.Diagnostics
+		got := m.Value(context.Background(), &diags)
+		if diags.HasError() {
+			t.Fatalf("Value() diagnostics = %v", diags)
+		}
+		if string(got) != `{"gateways":[],"port":8080}` {
+			t.Errorf("Value() = %s, want both keys", got)
+		}
+	})
+
+	t.Run("non-empty gateways with port is rejected", func(t *testing.T) {
+		m := &model{Gateways: listValue(t, "default"), Port: int64Value(8080)}
+
+		var diags diag.Diagnostics
+		if got := m.Value(context.Background(), &diags); got != nil {
+			t.Errorf("Value() = %s, want nil", got)
+		}
+		if !diags.HasError() {
+			t.Fatal("Value() accepted a populated gateways list with port")
+		}
+
+		detail := diags[0].Detail()
+		for _, want := range []string{"gateways", "port"} {
+			if !strings.Contains(detail, want) {
+				t.Errorf("detail = %q, want it to name %q", detail, want)
+			}
+		}
+
+		withPath, ok := diags[0].(diag.DiagnosticWithPath)
+		if !ok {
+			t.Fatal("diagnostic carries no attribute path")
+		}
+		if got := withPath.Path().String(); got != "gateways" {
+			t.Errorf("diagnostic path = %q, want gateways", got)
+		}
+	})
 }
 
 // TestMCPSettingsServerNameVersionTogether is the lane's extra test: server

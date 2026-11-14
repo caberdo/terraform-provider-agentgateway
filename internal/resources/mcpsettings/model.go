@@ -7,6 +7,7 @@ import (
 	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/resourceutil"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -67,12 +68,17 @@ type serverValue struct {
 func (m *model) Value(ctx context.Context, diags *diag.Diagnostics) json.RawMessage {
 	hasGateways := !m.Gateways.IsNull() && !m.Gateways.IsUnknown()
 	hasPort := !m.Port.IsNull() && !m.Port.IsUnknown()
-	if hasGateways && hasPort {
-		// The schema rejects this at plan time; repeating it here means a
-		// hand-built model cannot produce a payload the gateway will reject.
-		diags.AddError(
+	// A populated gateways list and port are alternatives. An empty list is
+	// not a conflicting value: the gateway UI writes `gateways: []` next to
+	// `port` when no gateway is bound, and the gateway accepts that. The check
+	// lives here rather than in the schema because a schema ConflictsWith
+	// cannot tell an empty list from a populated one.
+	if hasGateways && len(m.Gateways.Elements()) > 0 && hasPort {
+		diags.AddAttributeError(
+			path.Root("gateways"),
 			"Invalid agentgateway_mcp_settings",
-			"gateways and port conflict; set gateways, or port for the deprecated listener, but not both",
+			"gateways and port conflict; set gateways, or port for the deprecated listener, but not both. "+
+				"An empty gateways list is accepted with port.",
 		)
 		return nil
 	}

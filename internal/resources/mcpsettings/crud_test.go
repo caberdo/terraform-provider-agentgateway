@@ -109,9 +109,11 @@ resource "agentgateway_mcp_settings" "test" {
 	}
 }
 
-// TestMCPSettingsPlanTimeValidation pins the settings rules that must fail
-// during `terraform plan`: port and gateways conflict upstream, and
-// sse_keep_alive must be a Go duration.
+// TestMCPSettingsPlanTimeValidation pins the settings rules that must be
+// checked during `terraform plan`: sse_keep_alive must be a Go duration, and an
+// empty gateways list next to port (what the gateway UI writes) must plan
+// cleanly. The port/gateways conflict for a populated list is enforced in
+// Value(), because a schema validator cannot tell `[]` from a populated list.
 func TestMCPSettingsPlanTimeValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -119,13 +121,14 @@ func TestMCPSettingsPlanTimeValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "port and gateways",
+			// The gateway UI writes an empty gateways list next to port, so a
+			// plan with both must succeed; only a populated list conflicts.
+			name: "empty gateways with port",
 			config: `
 resource "agentgateway_mcp_settings" "test" {
   port     = 8080
-  gateways = ["default"]
+  gateways = []
 }`,
-			wantErr: `cannot be specified when`,
 		},
 		{
 			name: "sse keep alive without unit",
