@@ -129,6 +129,9 @@ func (h *handler) serveDelete(w http.ResponseWriter, kind configresource.Kind, i
 }
 
 func (h *handler) writeJSON(w http.ResponseWriter, status int, v any) {
+	// Config-resource responses are configresource.Resource values, whose JSON
+	// tags are the API envelope, so the fake's wire format stays byte-compatible
+	// with the real gateway (camelCase keys, RFC3339 timestamps).
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)

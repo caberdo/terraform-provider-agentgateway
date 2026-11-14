@@ -84,6 +84,46 @@ func TestEnvelopeParsesTimestamps(t *testing.T) {
 	})
 }
 
+// TestFakeEnvelopeMatchesClient proves the protocol fake and the client agree
+// on the wire format end to end: the fake encodes the same envelope the real
+// gateway sends, so a resource test sees real timestamps and revisions.
+func TestFakeEnvelopeMatchesClient(t *testing.T) {
+	t.Parallel()
+
+	_, c := agentgatewaytest.New(t)
+	ctx := context.Background()
+
+	created, err := c.Create(ctx, configresource.KindLLMProvider, []byte(`{"name":"openai","provider":"openai"}`))
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	// The fake stamps the Unix epoch, standing in for the gateway's clock.
+	want := time.Unix(0, 0).UTC()
+	if !created.CreatedAt.Equal(want) || !created.UpdatedAt.Equal(want) {
+		t.Errorf("expected create timestamps %s, got createdAt=%s updatedAt=%s",
+			want.Format(time.RFC3339), created.CreatedAt.Format(time.RFC3339), created.UpdatedAt.Format(time.RFC3339))
+	}
+
+	list, err := c.List(ctx, configresource.KindLLMProvider)
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 resource, got %d", len(list))
+	}
+	if list[0].ID != "openai" {
+		t.Errorf("expected id openai, got %q", list[0].ID)
+	}
+	if list[0].Revision != 1 {
+		t.Errorf("expected revision 1, got %d", list[0].Revision)
+	}
+	if !list[0].CreatedAt.Equal(want) || !list[0].UpdatedAt.Equal(want) {
+		t.Errorf("expected list timestamps %s, got createdAt=%s updatedAt=%s",
+			want.Format(time.RFC3339), list[0].CreatedAt.Format(time.RFC3339), list[0].UpdatedAt.Format(time.RFC3339))
+	}
+}
+
 func TestEnvelopeWithoutTimestampsIsZero(t *testing.T) {
 	t.Parallel()
 

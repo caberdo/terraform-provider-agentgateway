@@ -111,16 +111,9 @@ func (c *httpClient) List(ctx context.Context, kind configresource.Kind) ([]conf
 		return nil, err
 	}
 
-	var raw []resourceEnvelope
-	if err := json.Unmarshal(body, &raw); err != nil {
+	var list []configresource.Resource
+	if err := json.Unmarshal(body, &list); err != nil {
 		return nil, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
-	}
-	if raw == nil {
-		return nil, nil
-	}
-	list := make([]configresource.Resource, len(raw))
-	for i, envelope := range raw {
-		list[i] = envelope.resource()
 	}
 	return list, nil
 }
@@ -142,11 +135,11 @@ func (c *httpClient) Create(ctx context.Context, kind configresource.Kind, value
 		return configresource.Resource{}, err
 	}
 
-	var envelope resourceEnvelope
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	var res configresource.Resource
+	if err := json.Unmarshal(body, &res); err != nil {
 		return configresource.Resource{}, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
 	}
-	return envelope.resource(), nil
+	return res, nil
 }
 
 // Update writes a resource to the single-resource path.
@@ -157,11 +150,11 @@ func (c *httpClient) Update(ctx context.Context, kind configresource.Kind, id st
 		return configresource.Resource{}, err
 	}
 
-	var envelope resourceEnvelope
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	var res configresource.Resource
+	if err := json.Unmarshal(body, &res); err != nil {
 		return configresource.Resource{}, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
 	}
-	return envelope.resource(), nil
+	return res, nil
 }
 
 // Delete removes a resource.
@@ -265,30 +258,6 @@ func extractMessage(body []byte) string {
 		return s
 	}
 	return string(body)
-}
-
-// resourceEnvelope is the camelCase JSON shape of a config resource as the API
-// returns it (spec §5.2). Decoding is explicit so createdAt and updatedAt are
-// parsed into time.Time; they stay zero when the server omits them.
-type resourceEnvelope struct {
-	Kind      configresource.Kind `json:"kind"`
-	ID        string              `json:"id"`
-	Value     json.RawMessage     `json:"value"`
-	Revision  int64               `json:"revision"`
-	CreatedAt time.Time           `json:"createdAt"`
-	UpdatedAt time.Time           `json:"updatedAt"`
-}
-
-// resource converts the decoded envelope into a configresource.Resource.
-func (e resourceEnvelope) resource() configresource.Resource {
-	return configresource.Resource{
-		Kind:      e.Kind,
-		ID:        e.ID,
-		Value:     e.Value,
-		Revision:  e.Revision,
-		CreatedAt: e.CreatedAt,
-		UpdatedAt: e.UpdatedAt,
-	}
 }
 
 // runtimeResponse is the camelCase JSON shape of /api/runtime.
