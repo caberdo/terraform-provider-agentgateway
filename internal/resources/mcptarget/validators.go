@@ -39,6 +39,13 @@ func (v networkTransport) ValidateObject(_ context.Context, req validator.Object
 	}
 
 	attributes := req.ConfigValue.Attributes()
+	// A field that is unknown at plan time (for example a host taken from
+	// another resource's computed attribute) is not an absent field. Defer the
+	// shape check to apply, when every value is known.
+	if isUnknown(attributes["host"]) || isUnknown(attributes["backend"]) || isUnknown(attributes["port"]) {
+		return
+	}
+
 	host := isSet(attributes["host"])
 	backend := isSet(attributes["backend"])
 	port := isSet(attributes["port"])
@@ -92,6 +99,13 @@ func (v noPoliciesOnStdio) ValidateString(ctx context.Context, req validator.Str
 	if stdio.IsNull() || stdio.IsUnknown() {
 		return
 	}
+	// An unknown attribute means the block's shape is not settled yet, so the
+	// stdio-only rule is deferred to apply, like the transport shape rules.
+	for _, attribute := range stdio.Attributes() {
+		if isUnknown(attribute) {
+			return
+		}
+	}
 
 	resp.Diagnostics.AddAttributeError(
 		req.Path,
@@ -104,4 +118,10 @@ func (v noPoliciesOnStdio) ValidateString(ctx context.Context, req validator.Str
 // isSet reports whether an object attribute carries a known, non-null value.
 func isSet(value attr.Value) bool {
 	return value != nil && !value.IsNull() && !value.IsUnknown()
+}
+
+// isUnknown reports whether an object attribute exists and is unknown, which
+// means its value is only settled at apply time.
+func isUnknown(value attr.Value) bool {
+	return value != nil && value.IsUnknown()
 }

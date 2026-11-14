@@ -147,6 +147,22 @@ resource "agentgateway_mcp_settings" "test" {
 			wantErr: `Go duration`,
 		},
 		{
+			name: "sse keep alive negative",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  sse_keep_alive = "-30s"
+}`,
+			wantErr: `positive`,
+		},
+		{
+			name: "sse keep alive zero",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  sse_keep_alive = "0s"
+}`,
+			wantErr: `positive`,
+		},
+		{
 			name: "valid duration",
 			config: `
 resource "agentgateway_mcp_settings" "test" {

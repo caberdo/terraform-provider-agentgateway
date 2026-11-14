@@ -208,6 +208,91 @@ resource "agentgateway_mcp_target" "test" {
 	}
 }
 
+// TestMCPTargetPlanTimeValidationUnknownValues proves the plan-time checks
+// defer when a transport field is unknown: taking a host or a command from
+// another resource's computed attribute is normal Terraform, and the plan must
+// not report a spurious "host or backend is required" or "port requires host".
+func TestMCPTargetPlanTimeValidationUnknownValues(t *testing.T) {
+	const source = `
+resource "agentgateway_mcp_target" "source" {
+  name = "source"
+
+  mcp = {
+    host = "mcp.example.com"
+    port = 8080
+    path = "/mcp"
+  }
+}
+`
+
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{
+			name: "unknown host",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "unknown"
+  mcp = {
+    host = agentgateway_mcp_target.source.id
+  }
+}`,
+		},
+		{
+			name: "unknown host with port",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "unknown"
+  mcp = {
+    host = agentgateway_mcp_target.source.id
+    port = 8080
+  }
+}`,
+		},
+		{
+			name: "unknown backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "unknown"
+  mcp = {
+    backend = agentgateway_mcp_target.source.id
+    path    = "/mcp"
+  }
+}`,
+		},
+		{
+			name: "unknown stdio command with policies json",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "unknown"
+  stdio = {
+    cmd = agentgateway_mcp_target.source.id
+  }
+  policies_json = jsonencode({ cors = { allowOrigins = ["*"] } })
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := agentgatewaytest.New(t)
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testFactories(server.URL),
+				Steps: []resource.TestStep{
+					{
+						Config:             source + tt.config,
+						PlanOnly:           true,
+						ExpectNonEmptyPlan: true,
+					},
+				},
+			})
+		})
+	}
+}
+
 // TestMCPTargetTransportGroup pins that exactly one transport is required
 // before any request reaches the gateway.
 func TestMCPTargetTransportGroup(t *testing.T) {

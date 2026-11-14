@@ -192,7 +192,7 @@ func resourceSchema() schema.Schema {
 			},
 			"sse_keep_alive": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Interval at which SSE keep-alive comments are sent on long-lived MCP streams, as a Go duration such as `30s` or `1m30s`. Disabled when unset.",
+				MarkdownDescription: "Interval at which SSE keep-alive comments are sent on long-lived MCP streams, as a positive Go duration such as `30s` or `1m30s`. Disabled when unset.",
 				Validators: []validator.String{
 					goDuration{},
 				},

@@ -17,7 +17,7 @@ type goDuration struct{}
 var _ validator.String = goDuration{}
 
 func (v goDuration) Description(_ context.Context) string {
-	return `value must be a Go duration such as "30s" or "1m30s"`
+	return `value must be a positive Go duration such as "30s" or "1m30s"`
 }
 
 func (v goDuration) MarkdownDescription(ctx context.Context) string {
@@ -30,11 +30,21 @@ func (v goDuration) ValidateString(_ context.Context, req validator.StringReques
 	}
 
 	value := req.ConfigValue.ValueString()
-	if _, err := time.ParseDuration(value); err != nil {
+	parsed, err := time.ParseDuration(value)
+	switch {
+	case err != nil:
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Invalid agentgateway_mcp_settings sse_keep_alive",
 			fmt.Sprintf("%q is not a Go duration; use a value such as \"30s\" or \"1m30s\", or omit sse_keep_alive to disable keep-alives.", value),
+		)
+	case parsed <= 0:
+		// `time.ParseDuration` accepts `0s` and `-30s`; a keep-alive interval
+		// must be positive, and "off" is expressed by omitting the attribute.
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid agentgateway_mcp_settings sse_keep_alive",
+			fmt.Sprintf("%q must be a positive Go duration such as \"30s\" or \"1m30s\"; omit sse_keep_alive to disable keep-alives.", value),
 		)
 	}
 }
