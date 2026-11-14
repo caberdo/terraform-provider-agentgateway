@@ -454,9 +454,21 @@ func createdAPIKeyBody(t *testing.T, server *agentgatewaytest.Server) map[string
 		if request.Method != "PUT" || request.Path != "/api/config/resources/llm.apiKey" {
 			continue
 		}
-		var body map[string]json.RawMessage
-		if err := json.Unmarshal(request.Body, &body); err != nil {
+		// The collection PUT wraps the value in {"resources": [{"value": ...}]}.
+		var envelope struct {
+			Resources []struct {
+				Value json.RawMessage `json:"value"`
+			} `json:"resources"`
+		}
+		if err := json.Unmarshal(request.Body, &envelope); err != nil {
 			t.Fatalf("decoding create request body %s: %v", request.Body, err)
+		}
+		if len(envelope.Resources) != 1 {
+			t.Fatalf("expected 1 resource in the create request, got %d: %s", len(envelope.Resources), request.Body)
+		}
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Resources[0].Value, &body); err != nil {
+			t.Fatalf("decoding the create value %s: %v", envelope.Resources[0].Value, err)
 		}
 		return body
 	}

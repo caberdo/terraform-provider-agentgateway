@@ -260,7 +260,11 @@ func (m *model) Value(_ context.Context, diags *diag.Diagnostics) json.RawMessag
 	if setString(m.IDValue) && m.IDValue.ValueString() != "" {
 		value["id"] = m.IDValue.ValueString()
 	}
-	putString(value, "displayName", m.DisplayName)
+	// display_name is Terraform-side only: agentgateway v1.7.0 has no
+	// displayName on llm.models[] (the display name comes from the model
+	// catalog), so sending it makes the gateway reject the whole value with
+	// "unknown field `displayName`". It stays in state and is preserved on
+	// read like any attribute the server did not return.
 	putString(value, "visibility", m.Visibility)
 
 	provider, ok := m.providerValue(diags)

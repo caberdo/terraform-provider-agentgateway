@@ -2,6 +2,8 @@ package traffictcproute_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -23,8 +25,9 @@ import (
 )
 
 const (
-	accTCPRouteName = "tf-acc-tcp-route"
-	accTCPRouteType = "agentgateway_traffic_tcp_route"
+	accTCPRouteName   = "tf-acc-tcp-route"
+	accTCPRouteType   = "agentgateway_traffic_tcp_route"
+	accTCPGatewayName = "acctest-tcp-gateway"
 )
 
 // TestAccTrafficTCPRoute_basic creates a TCP route, imports it, updates its
@@ -32,6 +35,11 @@ const (
 func TestAccTrafficTCPRoute_basic(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
+
+	// A TCP route may only attach to a gateway that has TCP listeners, and the
+	// acceptance fixture's `default` gateway is HTTP. Seed a TCP gateway for
+	// the duration of the test.
+	seedTCPGateway(t, endpoint)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testFactories(endpoint),
@@ -112,7 +120,7 @@ func TestTrafficTCPRouteCRUD(t *testing.T) {
 const testAccTrafficTCPRouteConfig = `
 resource "agentgateway_traffic_tcp_route" "test" {
   name      = "` + accTCPRouteName + `"
-  gateways  = ["default"]
+  gateways  = ["` + accTCPGatewayName + `"]
   namespace = "default"
   rule_name = "tcp"
   hostnames = ["tcp.example.com"]
@@ -127,7 +135,7 @@ resource "agentgateway_traffic_tcp_route" "test" {
 const testAccTrafficTCPRouteUpdatedConfig = `
 resource "agentgateway_traffic_tcp_route" "test" {
   name      = "` + accTCPRouteName + `"
-  gateways  = ["default"]
+  gateways  = ["` + accTCPGatewayName + `"]
   namespace = "default"
   rule_name = "tcp"
   hostnames = ["tcp.example.com"]
@@ -142,6 +150,32 @@ resource "agentgateway_traffic_tcp_route" "test" {
   }
 }
 `
+
+// seedTCPGateway creates the TCP gateway the route attaches to and removes it
+// after the test. The collection PUT is an upsert, so a gateway left behind by
+// an aborted run is reused instead of failing the seed.
+func seedTCPGateway(t *testing.T, endpoint string) {
+	t.Helper()
+
+	c, err := client.New(client.Config{
+		BaseURL:    endpoint,
+		HTTPClient: http.DefaultClient,
+		UserAgent:  "terraform-provider-agentgateway/acctest",
+	})
+	if err != nil {
+		t.Fatalf("creating acceptance client: %v", err)
+	}
+
+	value := json.RawMessage(`{"name":"` + accTCPGatewayName + `","port":14099,"protocol":"TCP"}`)
+	if _, err := c.Create(context.Background(), configresource.KindTrafficGateway, value); err != nil {
+		t.Fatalf("seeding TCP gateway %s: %v", accTCPGatewayName, err)
+	}
+	t.Cleanup(func() {
+		if err := c.Delete(context.Background(), configresource.KindTrafficGateway, accTCPGatewayName); err != nil && !errors.Is(err, client.ErrNotFound) {
+			t.Logf("removing seeded TCP gateway %s: %v", accTCPGatewayName, err)
+		}
+	})
+}
 
 // testFactories builds a provider that registers only this resource. The
 // resource package must not import internal/provider (design §4), so the

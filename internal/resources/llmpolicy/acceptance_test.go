@@ -206,6 +206,22 @@ func clearPolicy(t *testing.T, endpoint, name string) {
 		return
 	}
 
+	// The gateway refuses to delete llm.policies.apiKey while DB-backed keys
+	// exist (C23), so a key left behind by an aborted llmapikey run has to go
+	// first. The acceptance environment is dedicated to this suite, and the
+	// suite runs packages serially (-p 1), so this cannot race a live test.
+	if name == apiKeyPolicyName {
+		keys, err := c.List(ctx, configresource.KindLLMAPIKey)
+		if err != nil {
+			t.Fatalf("listing api keys before clearing %q: %v", name, err)
+		}
+		for _, key := range keys {
+			if err := c.Delete(ctx, configresource.KindLLMAPIKey, key.ID); err != nil && !errors.Is(err, client.ErrNotFound) {
+				t.Fatalf("clearing leftover api key %q: %v", key.ID, err)
+			}
+		}
+	}
+
 	if err := c.Delete(ctx, configresource.KindLLMPolicy, name); err != nil && !errors.Is(err, client.ErrNotFound) {
 		t.Fatalf("clearing leftover llm policy %q: %v", name, err)
 	}

@@ -65,7 +65,7 @@ resource "agentgateway_test_resource" "a" {
     gateways  = ["default"]
     hostnames = ["a.acctest.example"]
     backends = [
-      { host = { host = "127.0.0.1", port = 8080 } },
+      { host = "127.0.0.1:8080" },
     ]
   })
 }
@@ -78,7 +78,7 @@ resource "agentgateway_test_resource" "b" {
     gateways  = ["default"]
     hostnames = ["b.acctest.example"]
     backends = [
-      { host = { host = "127.0.0.1", port = 8081 } },
+      { host = "127.0.0.1:8081" },
     ]
   })
 }

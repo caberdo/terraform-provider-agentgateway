@@ -53,8 +53,11 @@ func TestAccLLMModelResource(t *testing.T) {
 				// imported state cannot reproduce a configured defaults_json.
 				// The gateway may also omit or normalize defaulted params and
 				// expands the api_key env reference on read.
-				ExpectNonEmptyPlan:      true,
-				ImportStateVerifyIgnore: []string{"api_key", "defaults_json", "tokenize", "visibility"},
+				ExpectNonEmptyPlan: true,
+				// display_name is Terraform-side only: agentgateway v1.7.0 has
+				// no displayName on llm.models[], so an imported state cannot
+				// carry the configured label.
+				ImportStateVerifyIgnore: []string{"api_key", "defaults_json", "tokenize", "visibility", "display_name"},
 			},
 			{
 				Config: modelUpdatedConfig,

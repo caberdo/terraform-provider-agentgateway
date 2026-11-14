@@ -47,7 +47,7 @@ func TestAccFrontendPolicyResource(t *testing.T) {
 resource "agentgateway_frontend_policy" "test" {
   name = "accessLog"
   spec = jsonencode({
-    format = "json"
+    preset = "otel"
   })
 }`,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -71,7 +71,7 @@ resource "agentgateway_frontend_policy" "test" {
 resource "agentgateway_frontend_policy" "test" {
   name = "accessLog"
   spec = jsonencode({
-    format = "json"
+    preset = "otel"
     filter = "status >= 400"
   })
 }`,

@@ -2,6 +2,8 @@ package llmvirtualmodel
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -28,6 +30,11 @@ const acceptanceName = "acctest-virtual-model"
 func TestAccVirtualModelResource(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
+
+	// A virtual model may only route to models that exist in the merged
+	// config, so the two targets are seeded before the first plan. The real
+	// gateway validates the references at create time.
+	seedTargetModels(t, endpoint)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testFactories(endpoint),
@@ -100,6 +107,34 @@ resource "agentgateway_llm_virtual_model" "test" {
   }
 }
 `
+
+// seedTargetModels creates the two llm.model entries the virtual model routes
+// to and removes them after the test. The collection PUT is an upsert, so a
+// model left behind by an aborted run is reused instead of failing the seed.
+func seedTargetModels(t *testing.T, endpoint string) {
+	t.Helper()
+
+	c, err := client.New(client.Config{
+		BaseURL:    endpoint,
+		HTTPClient: http.DefaultClient,
+		UserAgent:  "terraform-provider-agentgateway/acctest",
+	})
+	if err != nil {
+		t.Fatalf("creating acceptance client: %v", err)
+	}
+
+	for _, name := range []string{"acctest-model-a", "acctest-model-b"} {
+		value := json.RawMessage(fmt.Sprintf(`{"name":%q,"provider":"openai"}`, name))
+		if _, err := c.Create(context.Background(), configresource.KindLLMModel, value); err != nil {
+			t.Fatalf("seeding model %s: %v", name, err)
+		}
+		t.Cleanup(func() {
+			if err := c.Delete(context.Background(), configresource.KindLLMModel, name); err != nil && !errors.Is(err, client.ErrNotFound) {
+				t.Logf("removing seeded model %s: %v", name, err)
+			}
+		})
+	}
+}
 
 // testFactories builds a provider that registers only this resource. The
 // resource package must not import internal/provider (design §4), so the

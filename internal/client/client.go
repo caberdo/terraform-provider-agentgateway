@@ -111,11 +111,13 @@ func (c *httpClient) List(ctx context.Context, kind configresource.Kind) ([]conf
 		return nil, err
 	}
 
-	var list []configresource.Resource
-	if err := json.Unmarshal(body, &list); err != nil {
+	// The gateway wraps every answer in {"resources": [...]}; see
+	// resourcesResponse.
+	var envelope resourcesResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
 	}
-	return list, nil
+	return envelope.Resources, nil
 }
 
 // Create upserts a resource on the collection path. Policy kinds are rejected
@@ -130,31 +132,33 @@ func (c *httpClient) Create(ctx context.Context, kind configresource.Kind, value
 	}
 
 	path := fmt.Sprintf("/api/config/resources/%s", url.PathEscape(string(kind)))
-	status, body, err := c.call(ctx, http.MethodPut, path, value)
+	payload, err := json.Marshal(resourcesRequest{Resources: []resourceRequest{{Value: value}}})
+	if err != nil {
+		return configresource.Resource{}, &APIError{Status: 0, Message: err.Error(), Kind: ErrInvalid}
+	}
+
+	status, body, err := c.call(ctx, http.MethodPut, path, payload)
 	if err != nil {
 		return configresource.Resource{}, err
 	}
 
-	var res configresource.Resource
-	if err := json.Unmarshal(body, &res); err != nil {
-		return configresource.Resource{}, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
-	}
-	return res, nil
+	return writtenResource(status, body, kind, "")
 }
 
 // Update writes a resource to the single-resource path.
 func (c *httpClient) Update(ctx context.Context, kind configresource.Kind, id string, value json.RawMessage) (configresource.Resource, error) {
 	path := fmt.Sprintf("/api/config/resources/%s/%s", url.PathEscape(string(kind)), url.PathEscape(id))
-	status, body, err := c.call(ctx, http.MethodPut, path, value)
+	payload, err := json.Marshal(resourceRequest{Value: value})
+	if err != nil {
+		return configresource.Resource{}, &APIError{Status: 0, Message: err.Error(), Kind: ErrInvalid}
+	}
+
+	status, body, err := c.call(ctx, http.MethodPut, path, payload)
 	if err != nil {
 		return configresource.Resource{}, err
 	}
 
-	var res configresource.Resource
-	if err := json.Unmarshal(body, &res); err != nil {
-		return configresource.Resource{}, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
-	}
-	return res, nil
+	return writtenResource(status, body, kind, id)
 }
 
 // Delete removes a resource.
@@ -258,6 +262,51 @@ func extractMessage(body []byte) string {
 		return s
 	}
 	return string(body)
+}
+
+// resourcesResponse is the envelope of every config-resource answer. A list
+// response carries every resource of the kind; a write response carries the
+// resources the gateway wrote, each with an extra "result" member
+// ("created"/"updated") that this type ignores.
+type resourcesResponse struct {
+	Resources []configresource.Resource `json:"resources"`
+}
+
+// resourcesRequest is the body of a collection PUT: the gateway upserts every
+// item by the id derived from its value and leaves omitted resources alone
+// (C3). The id is deliberately not sent: the server derives it, which is what
+// makes llm.apiKey's server-assigned UUID possible.
+type resourcesRequest struct {
+	Resources []resourceRequest `json:"resources"`
+}
+
+// resourceRequest is one item of a collection PUT; a single-resource PUT sends
+// the same {"value": ...} object on its own.
+type resourceRequest struct {
+	Value json.RawMessage `json:"value"`
+}
+
+// writtenResource decodes the resource a write produced. A 2xx answer with an
+// empty resources list means the gateway accepted the request but wrote
+// nothing, which is a protocol failure rather than a success: returning a zero
+// Resource would store an empty id in state.
+func writtenResource(status int, body []byte, kind configresource.Kind, id string) (configresource.Resource, error) {
+	var envelope resourcesResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return configresource.Resource{}, &APIError{Status: status, Message: err.Error(), Kind: ErrServer}
+	}
+	if len(envelope.Resources) == 0 {
+		target := string(kind)
+		if id != "" {
+			target += "/" + id
+		}
+		return configresource.Resource{}, &APIError{
+			Status:  status,
+			Message: fmt.Sprintf("the gateway reported success but wrote no resource for %s", target),
+			Kind:    ErrServer,
+		}
+	}
+	return envelope.Resources[0], nil
 }
 
 // runtimeResponse is the camelCase JSON shape of /api/runtime.

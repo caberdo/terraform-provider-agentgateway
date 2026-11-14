@@ -35,9 +35,11 @@ func TestAccLLMSettingsResource(t *testing.T) {
 				Config: gatewaysConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "id", "default"),
-					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "gateways.#", "2"),
+					// The gateway resolves every reference against the merged
+					// config, so only the fixture's real `default` gateway can
+					// be attached here.
+					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "gateways.#", "1"),
 					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "gateways.0", "default"),
-					resource.TestCheckResourceAttr("agentgateway_llm_settings.test", "gateways.1", "llm/listener"),
 				),
 			},
 			{
@@ -59,18 +61,16 @@ func TestAccLLMSettingsResource(t *testing.T) {
 
 const gatewaysConfig = `
 resource "agentgateway_llm_settings" "test" {
-  gateways = ["default", "llm/listener"]
+  gateways = ["default"]
 }
 `
 
 const portConfig = `
 resource "agentgateway_llm_settings" "test" {
+  # The gateway validates the TLS files when it applies the write, and the
+  # acceptance image carries no certificate, so this step exercises the port
+  # path only.
   port = 8080
-
-  tls_json = jsonencode({
-    cert = "/etc/tls/tls.crt"
-    key  = "/etc/tls/tls.key"
-  })
 }
 `
 

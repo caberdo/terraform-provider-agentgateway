@@ -65,6 +65,7 @@ resource "agentgateway_test_resource" "listener" {
 
   value_json = jsonencode({
     name = %q
+    port = %d
     listeners = [
       {
         name     = "http"
@@ -94,7 +95,7 @@ data "agentgateway_traffic_gateways" "test" {
     agentgateway_test_resource.plain,
   ]
 }
-`, listenerName, listenerName, plainName, plainName, port, prefix)
+`, listenerName, listenerName, port+1, plainName, plainName, port, prefix)
 }
 
 // checkGatewaysDestroyed proves the backing gateways are gone after destroy.

@@ -131,9 +131,12 @@ resource "agentgateway_llm_policy" "api_key" {
 }
 
 resource "agentgateway_llm_api_key" "test" {
-  key            = "` + acceptanceKey + `"
-  metadata       = { team = "` + acceptanceTeam + `" }
+  key      = "` + acceptanceKey + `"
+  metadata = { team = "` + acceptanceTeam + `", name = "` + acceptanceTeam + `" }
   allowed_models = ["gpt-4o-mini", "openai/*"]
+
+  # The gateway rejects a key with budgets when metadata.name is missing.
+  depends_on = [agentgateway_llm_policy.api_key]
 
   budgets = [
     {
@@ -154,8 +157,10 @@ resource "agentgateway_llm_policy" "api_key" {
 
 resource "agentgateway_llm_api_key" "test" {
   key            = "` + acceptanceKey + `-rotated"
-  metadata       = { team = "` + acceptanceTeam + `" }
+  metadata       = { team = "` + acceptanceTeam + `", name = "` + acceptanceTeam + `" }
   allowed_models = []
+
+  depends_on = [agentgateway_llm_policy.api_key]
 }
 `
 
@@ -167,7 +172,11 @@ resource "agentgateway_llm_policy" "api_key" {
 
 resource "agentgateway_llm_api_key" "test" {
   key_hash = "` + apiKeyHash + `"
-  metadata = { team = "` + acceptanceTeam + `" }
+  metadata = { team = "` + acceptanceTeam + `", name = "` + acceptanceTeam + `" }
+
+  # Terraform would otherwise create the key and its prerequisite policy in
+  # parallel, and the gateway rejects a key before the policy exists (C10).
+  depends_on = [agentgateway_llm_policy.api_key]
 }
 `
 

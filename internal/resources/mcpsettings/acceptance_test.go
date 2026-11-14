@@ -36,9 +36,11 @@ func TestAccMCPSettingsResource(t *testing.T) {
 				Config: gatewaysSettingsConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "id", "default"),
-					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "gateways.#", "2"),
+					// The gateway resolves every reference against the merged
+					// config, so only the fixture's real `default` gateway can
+					// be attached here.
+					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "gateways.#", "1"),
 					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "gateways.0", "default"),
-					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "gateways.1", "mcp/listener"),
 					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "stateful_mode", "stateless"),
 					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "prefix_mode", "always"),
 					resource.TestCheckResourceAttr("agentgateway_mcp_settings.test", "server.name", "agentgateway"),
@@ -95,7 +97,7 @@ resource "agentgateway_mcp_settings" "test" {
 
 const gatewaysSettingsConfig = `
 resource "agentgateway_mcp_settings" "test" {
-  gateways                 = ["default", "mcp/listener"]
+  gateways                 = ["default"]
   stateful_mode            = "stateless"
   prefix_mode              = "always"
   failure_mode             = "failClosed"

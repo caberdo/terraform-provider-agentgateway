@@ -71,7 +71,7 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(accRouteType+".test", "matches.0.path.0.exact", "/v1/health"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.#", "1"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.weight", "2"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","port":8080}`),
+					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"default/svc","port":8080}`),
 				),
 			},
 		},
@@ -109,7 +109,7 @@ func TestTrafficRouteCRUD(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(accRouteType+".test", "matches.0.path.0.exact", "/v1/health"),
 					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.weight", "2"),
-					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"svc","port":8080}`),
+					resource.TestCheckResourceAttr(accRouteType+".test", "backends.0.service_json", `{"name":"default/svc","port":8080}`),
 				),
 			},
 		},
@@ -164,8 +164,9 @@ resource "agentgateway_traffic_route" "test" {
   backends {
     weight = 2
 
+    # A service reference is a NamespacedHostname (namespace/hostname).
     service_json = jsonencode({
-      name = "svc"
+      name = "default/svc"
       port = 8080
     })
   }

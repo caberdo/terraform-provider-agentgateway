@@ -25,6 +25,13 @@ services:
     # The image runs as a non-root user, which cannot create the SQLite file
     # in a fresh named volume.
     user: "0:0"
+    # The acceptance configs reference credentials as `$ENV` (spec §7.1): the
+    # gateway stores the reference verbatim and resolves it when a request is
+    # served, so a dummy value is enough for a write to validate.
+    environment:
+      ACCTEST_LLM_PROVIDER_KEY: "sk-acctest-provider"
+      ACCTEST_OPENAI_API_KEY: "sk-acctest-openai"
+      ACCTEST_TOKEN: "acctest-token"
     ports:
       - "127.0.0.1:15000:15000"
     volumes:
@@ -97,7 +104,10 @@ services:
         status=0
         # The coverage profile lands in the mounted worktree, where
         # `make coverage-merge` and the acceptance job pick it up.
-        go test -v -count=1 -timeout 30m \
+        # -p 1: the three gateways are shared fixtures with singleton ids
+        # (llm.settings/default, mcp.settings/default, llm.policy/apiKey), so
+        # packages must not run their tests against them in parallel.
+        go test -v -count=1 -p 1 -timeout 30m \
           -covermode=atomic -coverprofile=/app/coverage-acceptance.out -coverpkg=./internal/... \
           ./internal/... || status=$$?
         if [ -f coverage-acceptance.out ]; then

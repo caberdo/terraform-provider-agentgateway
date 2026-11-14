@@ -1,0 +1,39 @@
+# Per-package statement-coverage floors for `make coverage-gate`.
+#
+# Each floor is the coverage measured on the v1 integration branch minus a
+# 2-point margin, so ordinary refactoring has room but a real regression fails.
+# `default` is the backstop for a package that is not listed: add an explicit
+# floor in the same pull request that introduces the package.
+internal/acctest 88.6
+internal/agentgatewaytest 56.2
+internal/client 71.0
+internal/configresource 86.1
+internal/datasources/configresources 73.0
+internal/datasources/effectiveconfig 72.4
+internal/datasources/llmapikeys 72.3
+internal/datasources/llmmodels 65.9
+internal/datasources/llmproviders 60.3
+internal/datasources/mcptargets 66.6
+internal/datasources/runtime 52.5
+internal/datasources/trafficgateways 78.4
+internal/datasources/trafficroutes 80.3
+internal/provider 68.5
+# providerdata has no test files yet; its floor stays at zero until it does.
+internal/providerdata 0
+internal/resources/frontendpolicy 98.0
+internal/resources/llmapikey 75.5
+internal/resources/llmmodel 86.7
+internal/resources/llmpolicy 98.0
+internal/resources/llmprovider 90.2
+internal/resources/llmsettings 81.8
+internal/resources/llmvirtualmodel 90.3
+internal/resources/mcppolicy 98.0
+internal/resources/mcpsettings 87.4
+internal/resources/mcptarget 89.2
+internal/resources/modelcatalog 86.9
+internal/resources/trafficgateway 88.0
+internal/resources/trafficroute 87.6
+internal/resources/traffictcproute 87.6
+internal/resources/uipolicy 98.0
+internal/resourceutil 84.7
+default 50

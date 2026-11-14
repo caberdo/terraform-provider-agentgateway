@@ -70,7 +70,9 @@ func TestLLMModelValue(t *testing.T) {
 			},
 		},
 		{
-			name: "internal_visibility_and_display_name",
+			// display_name is Terraform-side only: the gateway has no
+			// displayName field, so it must never reach the wire.
+			name: "internal_visibility_omits_display_name",
 			model: func() *model {
 				m := testModel()
 				m.Visibility = types.StringValue("internal")
@@ -78,10 +80,9 @@ func TestLLMModelValue(t *testing.T) {
 				return m
 			},
 			want: map[string]any{
-				"name":        "gpt-4o",
-				"displayName": "GPT-4o",
-				"provider":    "openai",
-				"visibility":  "internal",
+				"name":       "gpt-4o",
+				"provider":   "openai",
+				"visibility": "internal",
 			},
 		},
 		{

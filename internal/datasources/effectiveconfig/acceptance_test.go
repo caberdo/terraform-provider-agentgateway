@@ -61,7 +61,7 @@ resource "agentgateway_test_resource" "provider" {
   value_json = jsonencode({
     name     = %q
     provider = "openai"
-    model    = "gpt-4o-mini"
+    params   = { model = "gpt-4o-mini" }
   })
 }
 

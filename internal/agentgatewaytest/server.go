@@ -86,37 +86,65 @@ func (h *handler) serveList(w http.ResponseWriter, kind configresource.Kind) {
 		h.writeError(w, status, msg)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, list)
+	h.writeJSON(w, http.StatusOK, resourcesResponse{Resources: list})
 }
 
 func (h *handler) serveCreate(w http.ResponseWriter, r *http.Request, kind configresource.Kind) {
-	value, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	res, status, msg := h.store.Create(kind, value)
-	if status != 0 {
-		h.writeError(w, status, msg)
+	// The collection PUT takes {"resources": [{"value": ...}]} and answers
+	// with the resources it wrote. The item id is derived from the value, so
+	// the request does not carry one.
+	var request resourcesRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		h.writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	h.writeJSON(w, http.StatusOK, res)
+
+	written := make([]configresource.Resource, 0, len(request.Resources))
+	for _, item := range request.Resources {
+		if len(item.Value) == 0 {
+			h.writeError(w, http.StatusUnprocessableEntity, "missing field `value`")
+			return
+		}
+		res, status, msg := h.store.Create(kind, item.Value)
+		if status != 0 {
+			h.writeError(w, status, msg)
+			return
+		}
+		written = append(written, res)
+	}
+	h.writeJSON(w, http.StatusOK, resourcesResponse{Resources: written})
 }
 
 func (h *handler) serveUpdate(w http.ResponseWriter, r *http.Request, kind configresource.Kind, id string) {
-	value, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	res, status, msg := h.store.Update(kind, id, value)
+	// The single-resource PUT takes {"value": ...}; the id comes from the path.
+	var request valueRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		h.writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if len(request.Value) == 0 {
+		h.writeError(w, http.StatusUnprocessableEntity, "missing field `value`")
+		return
+	}
+
+	res, status, msg := h.store.Update(kind, id, request.Value)
 	if status != 0 {
 		h.writeError(w, status, msg)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, res)
+	h.writeJSON(w, http.StatusOK, resourcesResponse{Resources: []configresource.Resource{res}})
 }
 
 func (h *handler) serveDelete(w http.ResponseWriter, kind configresource.Kind, id string) {
@@ -125,7 +153,34 @@ func (h *handler) serveDelete(w http.ResponseWriter, kind configresource.Kind, i
 		h.writeError(w, status, msg)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	h.writeJSON(w, http.StatusOK, deleteResponse{Status: "success", Message: "Configuration resource deleted successfully"})
+}
+
+// resourcesResponse is the envelope of every config-resource answer, matching
+// the real gateway.
+type resourcesResponse struct {
+	Resources []configresource.Resource `json:"resources"`
+}
+
+// resourcesRequest is the body of a collection PUT.
+type resourcesRequest struct {
+	Resources []resourceRequest `json:"resources"`
+}
+
+// resourceRequest is one item of a collection PUT.
+type resourceRequest struct {
+	Value json.RawMessage `json:"value"`
+}
+
+// valueRequest is the body of a single-resource PUT.
+type valueRequest struct {
+	Value json.RawMessage `json:"value"`
+}
+
+// deleteResponse is the body of a successful DELETE.
+type deleteResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 func (h *handler) writeJSON(w http.ResponseWriter, status int, v any) {

@@ -34,22 +34,25 @@ func TestServerEnvelopeUsesCamelCaseKeys(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	var body []map[string]json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	var envelope struct {
+		Resources []map[string]json.RawMessage `json:"resources"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		t.Fatalf("decoding the list response: %v", err)
 	}
-	if len(body) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(body))
+	if len(envelope.Resources) != 1 {
+		t.Fatalf("expected 1 resource, got %d", len(envelope.Resources))
 	}
+	item := envelope.Resources[0]
 
 	for _, key := range []string{"kind", "id", "value", "revision", "createdAt", "updatedAt"} {
-		if _, ok := body[0][key]; !ok {
-			t.Errorf("missing camelCase envelope key %q in %v", key, body[0])
+		if _, ok := item[key]; !ok {
+			t.Errorf("missing camelCase envelope key %q in %v", key, item)
 		}
 	}
 	for _, key := range []string{"Kind", "ID", "Value", "Revision", "CreatedAt", "UpdatedAt"} {
-		if _, ok := body[0][key]; ok {
-			t.Errorf("unexpected PascalCase envelope key %q in %v", key, body[0])
+		if _, ok := item[key]; ok {
+			t.Errorf("unexpected PascalCase envelope key %q in %v", key, item)
 		}
 	}
 }

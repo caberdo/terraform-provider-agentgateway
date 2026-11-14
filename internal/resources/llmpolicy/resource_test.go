@@ -246,7 +246,14 @@ func policyBody(t *testing.T, server *agentgatewaytest.Server, id string) json.R
 	want := "/api/config/resources/" + string(configresource.KindLLMPolicy) + "/" + id
 	for _, req := range server.Requests() {
 		if req.Method == http.MethodPut && req.Path == want {
-			return req.Body
+			// The single-resource PUT wraps the value in {"value": ...}.
+			var envelope struct {
+				Value json.RawMessage `json:"value"`
+			}
+			if err := json.Unmarshal(req.Body, &envelope); err != nil {
+				t.Fatalf("decoding the PUT body %s: %v", req.Body, err)
+			}
+			return envelope.Value
 		}
 	}
 	t.Fatalf("no PUT %s was recorded", want)

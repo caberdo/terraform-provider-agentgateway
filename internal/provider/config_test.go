@@ -11,6 +11,20 @@ import (
 )
 
 func TestResolveDefaults(t *testing.T) {
+	// The acceptance compose environment exports these variables, so the
+	// default-resolution test must not inherit them.
+	for _, name := range []string{
+		"AGENTGATEWAY_ENDPOINT",
+		"AGENTGATEWAY_TOKEN",
+		"AGENTGATEWAY_USERNAME",
+		"AGENTGATEWAY_PASSWORD",
+		"AGENTGATEWAY_TIMEOUT",
+		"AGENTGATEWAY_INSECURE_SKIP_VERIFY",
+		"AGENTGATEWAY_VERIFY",
+	} {
+		t.Setenv(name, "")
+	}
+
 	cfg := provider.Config{}
 	resolved := cfg.Resolve()
 

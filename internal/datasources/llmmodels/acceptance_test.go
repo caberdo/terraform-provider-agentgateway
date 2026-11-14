@@ -45,7 +45,6 @@ func TestAccLLMModelsDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.#", "1"),
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.id", acceptanceModel),
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.name", acceptanceModel),
-					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.display_name", "Acceptance Model"),
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.provider", "openAI"),
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.model", "gpt-4o"),
 					resource.TestCheckResourceAttr("data.agentgateway_llm_models.test", "models.0.visibility", "public"),
@@ -60,7 +59,6 @@ resource "agentgateway_backing" "model" {
   kind = "llm.model"
   value_json = jsonencode({
     name        = "` + acceptanceModel + `"
-    displayName = "Acceptance Model"
     visibility  = "public"
     provider    = "openAI"
     params      = { model = "gpt-4o" }

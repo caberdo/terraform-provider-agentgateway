@@ -110,20 +110,26 @@ type matchPayload struct {
 // pathPayload is the value object for a path match.
 type pathPayload struct {
 	Exact  *string `json:"exact,omitempty"`
-	Prefix *string `json:"prefix,omitempty"`
+	Prefix *string `json:"pathPrefix,omitempty"`
 	Regex  *string `json:"regex,omitempty"`
 }
 
-// headerPayload is the value object for one header match.
+// headerPayload is the value object for one header match. The wire shape nests
+// the exact/regex variant under `value` (RouteMatch.HeaderMatch), while the
+// Terraform block keeps it flat for readability.
 type headerPayload struct {
-	Name  string  `json:"name"`
-	Exact *string `json:"exact,omitempty"`
-	Regex *string `json:"regex,omitempty"`
+	Name  string        `json:"name"`
+	Value *valuePayload `json:"value,omitempty"`
 }
 
 // queryPayload is the value object for one query parameter match.
 type queryPayload struct {
-	Name  string  `json:"name"`
+	Name  string        `json:"name"`
+	Value *valuePayload `json:"value,omitempty"`
+}
+
+// valuePayload is the exact-or-regex value of a header or query match.
+type valuePayload struct {
 	Exact *string `json:"exact,omitempty"`
 	Regex *string `json:"regex,omitempty"`
 }
@@ -162,20 +168,24 @@ type matchValue struct {
 // pathValue is the wire representation of a path match.
 type pathValue struct {
 	Exact  *string `json:"exact"`
-	Prefix *string `json:"prefix"`
+	Prefix *string `json:"pathPrefix"`
 	Regex  *string `json:"regex"`
 }
 
 // headerValue is the wire representation of one header match.
 type headerValue struct {
-	Name  *string `json:"name"`
-	Exact *string `json:"exact"`
-	Regex *string `json:"regex"`
+	Name  *string     `json:"name"`
+	Value *valueValue `json:"value"`
 }
 
 // queryValue is the wire representation of one query parameter match.
 type queryValue struct {
-	Name  *string `json:"name"`
+	Name  *string     `json:"name"`
+	Value *valueValue `json:"value"`
+}
+
+// valueValue is the exact-or-regex value of a header or query match.
+type valueValue struct {
 	Exact *string `json:"exact"`
 	Regex *string `json:"regex"`
 }
@@ -258,32 +268,30 @@ func (m *model) matchPayloads(diags *diag.Diagnostics) []matchPayload {
 		}
 
 		for j, header := range match.Headers {
-			if countSet(header.Exact, header.Regex) > 1 {
+			if countSet(header.Exact, header.Regex) != 1 {
 				diags.AddAttributeError(
 					matchPath.AtName("headers").AtListIndex(j).AtName("exact"),
 					"Invalid traffic route header match",
-					"exactly one of exact or regex may be set in a header block",
+					"exactly one of exact or regex must be set in a header block",
 				)
 			}
 			payload.Headers = append(payload.Headers, headerPayload{
 				Name:  header.Name.ValueString(),
-				Exact: stringPointer(header.Exact),
-				Regex: stringPointer(header.Regex),
+				Value: valuePayloadPointer(header.Exact, header.Regex),
 			})
 		}
 
 		for j, query := range match.Query {
-			if countSet(query.Exact, query.Regex) > 1 {
+			if countSet(query.Exact, query.Regex) != 1 {
 				diags.AddAttributeError(
 					matchPath.AtName("query").AtListIndex(j).AtName("exact"),
 					"Invalid traffic route query match",
-					"exactly one of exact or regex may be set in a query block",
+					"exactly one of exact or regex must be set in a query block",
 				)
 			}
 			payload.Query = append(payload.Query, queryPayload{
 				Name:  query.Name.ValueString(),
-				Exact: stringPointer(query.Exact),
-				Regex: stringPointer(query.Regex),
+				Value: valuePayloadPointer(query.Exact, query.Regex),
 			})
 		}
 
@@ -460,19 +468,21 @@ func (m *model) SetValue(ctx context.Context, value json.RawMessage, diags *diag
 			}
 			if matchValue.Headers != nil {
 				for _, header := range *matchValue.Headers {
+					exact, regex := valueStrings(header.Value)
 					match.Headers = append(match.Headers, headerModel{
 						Name:  stringOrNull(header.Name),
-						Exact: stringOrNull(header.Exact),
-						Regex: stringOrNull(header.Regex),
+						Exact: exact,
+						Regex: regex,
 					})
 				}
 			}
 			if matchValue.Query != nil {
 				for _, query := range *matchValue.Query {
+					exact, regex := valueStrings(query.Value)
 					match.Query = append(match.Query, queryModel{
 						Name:  stringOrNull(query.Name),
-						Exact: stringOrNull(query.Exact),
-						Regex: stringOrNull(query.Regex),
+						Exact: exact,
+						Regex: regex,
 					})
 				}
 			}
@@ -695,3 +705,24 @@ func stringPointer(value types.String) *string {
 
 // Ensure the model satisfies the shared harness interface.
 var _ resourceutil.KindResource = (*model)(nil)
+
+// valuePayloadPointer returns the nested value object of a header or query
+// match, or nil when neither variant is set.
+func valuePayloadPointer(exact, regex types.String) *valuePayload {
+	if !isSet(exact) && !isSet(regex) {
+		return nil
+	}
+	return &valuePayload{
+		Exact: stringPointer(exact),
+		Regex: stringPointer(regex),
+	}
+}
+
+// valueStrings flattens the nested wire value back into the flat Terraform
+// attributes.
+func valueStrings(value *valueValue) (types.String, types.String) {
+	if value == nil {
+		return types.StringNull(), types.StringNull()
+	}
+	return stringOrNull(value.Exact), stringOrNull(value.Regex)
+}

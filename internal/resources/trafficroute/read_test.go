@@ -20,14 +20,14 @@ func TestTrafficRouteSetValue(t *testing.T) {
 			"hostnames": ["example.com", "*.example.org"],
 			"matches": [
 				{
-					"path": {"prefix": "/api"},
+					"path": {"pathPrefix": "/api"},
 					"method": "GET",
 					"headers": [
-						{"name": "x-tenant", "exact": "acme"},
-						{"name": "x-trace", "regex": "^[a-f0-9]+$"}
+						{"name": "x-tenant", "value": {"exact": "acme"}},
+						{"name": "x-trace", "value": {"regex": "^[a-f0-9]+$"}}
 					],
 					"query": [
-						{"name": "page", "exact": "1"}
+						{"name": "page", "value": {"exact": "1"}}
 					]
 				}
 			],

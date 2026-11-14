@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -61,7 +62,7 @@ func TestEnvelopeParsesTimestamps(t *testing.T) {
 	t.Run("list response", func(t *testing.T) {
 		t.Parallel()
 
-		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", "["+item+"]")
+		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", `{"resources":[`+item+`]}`)
 		list, err := c.List(ctx, configresource.KindLLMProvider)
 		if err != nil {
 			t.Fatalf("list failed: %v", err)
@@ -75,7 +76,7 @@ func TestEnvelopeParsesTimestamps(t *testing.T) {
 	t.Run("single-resource response", func(t *testing.T) {
 		t.Parallel()
 
-		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", item)
+		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", `{"resources":[`+item+`]}`)
 		res, err := c.Update(ctx, configresource.KindLLMProvider, "openai", []byte(`{"name":"openai"}`))
 		if err != nil {
 			t.Fatalf("update failed: %v", err)
@@ -133,7 +134,7 @@ func TestEnvelopeWithoutTimestampsIsZero(t *testing.T) {
 	t.Run("list response", func(t *testing.T) {
 		t.Parallel()
 
-		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", "["+item+"]")
+		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", `{"resources":[`+item+`]}`)
 		list, err := c.List(ctx, configresource.KindLLMProvider)
 		if err != nil {
 			t.Fatalf("list failed: %v", err)
@@ -150,7 +151,7 @@ func TestEnvelopeWithoutTimestampsIsZero(t *testing.T) {
 	t.Run("single-resource response", func(t *testing.T) {
 		t.Parallel()
 
-		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", item)
+		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", `{"resources":[`+item+`]}`)
 		res, err := c.Update(ctx, configresource.KindLLMProvider, "openai", []byte(`{"name":"openai"}`))
 		if err != nil {
 			t.Fatalf("update failed: %v", err)
@@ -184,6 +185,75 @@ func TestCreateUsesCollectionPath(t *testing.T) {
 	}
 	if reqs[0].Path != "/api/config/resources/llm.provider" {
 		t.Fatalf("expected collection path, got %s", reqs[0].Path)
+	}
+
+	// The real gateway rejects a bare value on the collection path: it expects
+	// {"resources": [{"value": ...}]}.
+	var body struct {
+		Resources []struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(reqs[0].Body, &body); err != nil {
+		t.Fatalf("decoding the create body %s: %v", reqs[0].Body, err)
+	}
+	if len(body.Resources) != 1 {
+		t.Fatalf("expected one resource in the create body, got %d: %s", len(body.Resources), reqs[0].Body)
+	}
+	if got := string(body.Resources[0].Value); got != `{"name":"openai","provider":"openai"}` {
+		t.Errorf("expected the value verbatim, got %s", got)
+	}
+}
+
+func TestUpdateUsesValueEnvelope(t *testing.T) {
+	t.Parallel()
+
+	srv, c := agentgatewaytest.New(t)
+	ctx := context.Background()
+
+	if _, err := c.Create(ctx, configresource.KindLLMProvider, []byte(`{"name":"openai","provider":"openai"}`)); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	if _, err := c.Update(ctx, configresource.KindLLMProvider, "openai", []byte(`{"name":"openai","provider":"anthropic"}`)); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	var last *agentgatewaytest.RecordedRequest
+	reqs := srv.Requests()
+	for i := range reqs {
+		if reqs[i].Method == http.MethodPut && reqs[i].Path == "/api/config/resources/llm.provider/openai" {
+			last = &reqs[i]
+		}
+	}
+	if last == nil {
+		t.Fatal("the client sent no single-resource PUT")
+	}
+
+	var body struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(last.Body, &body); err != nil {
+		t.Fatalf("decoding the update body %s: %v", last.Body, err)
+	}
+	if got := string(body.Value); got != `{"name":"openai","provider":"anthropic"}` {
+		t.Errorf("expected the value verbatim, got %s", got)
+	}
+}
+
+// TestWriteWithoutResourcesIsAnError pins the failure mode a real gateway run
+// exposed: a 200 with an empty resources list means the gateway stored
+// nothing, so the client must not hand back a zero Resource (which would put
+// an empty id in state).
+func TestWriteWithoutResourcesIsAnError(t *testing.T) {
+	t.Parallel()
+
+	c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider", `{"resources":[]}`)
+	_, err := c.Create(context.Background(), configresource.KindLLMProvider, []byte(`{"name":"openai"}`))
+	if err == nil {
+		t.Fatal("expected an error for a write that returned no resource")
+	}
+	if !errors.Is(err, client.ErrServer) {
+		t.Fatalf("expected ErrServer, got %v", err)
 	}
 }
 

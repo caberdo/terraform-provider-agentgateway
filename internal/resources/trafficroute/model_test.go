@@ -74,7 +74,7 @@ func TestTrafficRouteValue(t *testing.T) {
 			mutate: func(t *testing.T, m *model) {
 				m.Matches = []matchModel{{Path: []pathModel{{Prefix: types.StringValue("/api")}}}}
 			},
-			want: `{"name":"r","matches":[{"path":{"prefix":"/api"}}]}`,
+			want: `{"name":"r","matches":[{"path":{"pathPrefix":"/api"}}]}`,
 		},
 		{
 			name: "path regex",
@@ -97,7 +97,7 @@ func TestTrafficRouteValue(t *testing.T) {
 					},
 				}}
 			},
-			want: `{"name":"r","matches":[{"path":{"prefix":"/api"},"headers":[{"name":"x-tenant","exact":"acme"},{"name":"x-trace","regex":"^[a-f0-9]+$"}],"query":[{"name":"page","exact":"1"}]}]}`,
+			want: `{"name":"r","matches":[{"path":{"pathPrefix":"/api"},"headers":[{"name":"x-tenant","value":{"exact":"acme"}},{"name":"x-trace","value":{"regex":"^[a-f0-9]+$"}}],"query":[{"name":"page","value":{"exact":"1"}}]}]}`,
 		},
 		{
 			name: "backend host",

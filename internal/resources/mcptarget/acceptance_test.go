@@ -119,17 +119,21 @@ resource "agentgateway_mcp_target" "test" {
     port = 443
     path = "/openapi.json"
 
-    schema_json = jsonencode({
-      url = "https://api.example.com/openapi.json"
-    })
+    # An inline document keeps the create offline: the gateway fetches a
+    # url schema at write time and the acceptance host has no route to
+    # api.example.com.
+    schema_json = jsonencode(jsonencode({
+      openapi = "3.0.0"
+      info    = { title = "Acceptance", version = "1.0.0" }
+      paths   = {}
+    }))
   }
 }
 `
 
 const httpTargetConfig = `
 resource "agentgateway_mcp_target" "test" {
-  name      = "acctest-mcp-target"
-  condition = "true"
+  name = "acctest-mcp-target"
 
   mcp = {
     host = "mcp.example.com"
@@ -138,15 +142,14 @@ resource "agentgateway_mcp_target" "test" {
   }
 
   policies_json = jsonencode({
-    cors = { allowOrigins = ["*"] }
+    requestHeaderModifier = { set = { "x-acctest" = "mcp" } }
   })
 }
 `
 
 const renamedTargetConfig = `
 resource "agentgateway_mcp_target" "test" {
-  name      = "acctest-mcp-target-renamed"
-  condition = "true"
+  name = "acctest-mcp-target-renamed"
 
   mcp = {
     host = "mcp.example.com"
@@ -155,7 +158,7 @@ resource "agentgateway_mcp_target" "test" {
   }
 
   policies_json = jsonencode({
-    cors = { allowOrigins = ["*"] }
+    requestHeaderModifier = { set = { "x-acctest" = "mcp" } }
   })
 }
 `
