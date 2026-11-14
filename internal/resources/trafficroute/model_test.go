@@ -146,7 +146,7 @@ func TestTrafficRouteValue(t *testing.T) {
 			mutate: func(t *testing.T, m *model) {
 				m.Backends = []backendModel{{JSON: jsonValue(`{"aws":{"region":"us-east-1"}}`)}}
 			},
-			want: `{"name":"r","backends":[{"aws":{"region":"us-east-1"},"weight":1}]}`,
+			want: `{"name":"r","backends":[{"aws":{"region":"us-east-1"}}]}`,
 		},
 		{
 			name: "policies",
@@ -205,6 +205,136 @@ func TestTrafficRouteBackendWeightDefaultsToOne(t *testing.T) {
 	want := `{"name":"r","backends":[{"weight":1,"host":{"host":"127.0.0.1","port":8080}}]}`
 	if string(got) != want {
 		t.Errorf("Value() = %s, want %s", got, want)
+	}
+}
+
+// TestTrafficRouteBackendJSONRejectsTypedKeys proves a typed backend key may
+// not be smuggled inside the generic json object. Read-back extracts those keys
+// into their own attributes, so allowing them would drop them from json and
+// produce a perpetual diff.
+func TestTrafficRouteBackendJSONRejectsTypedKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		json   string
+		detail string
+	}{
+		{
+			name:   "weight",
+			json:   `{"aws":{"region":"us-east-1"},"weight":5}`,
+			detail: "weight must be set as the sibling weight attribute, not inside json",
+		},
+		{
+			name:   "host",
+			json:   `{"host":{"host":"127.0.0.1","port":8080}}`,
+			detail: "host must be set as the sibling host block, not inside json",
+		},
+		{
+			name:   "backend",
+			json:   `{"backend":{"name":"svc"}}`,
+			detail: "backend must be set as the sibling backend block, not inside json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newModel()
+			m.Name = types.StringValue("r")
+			m.Backends = []backendModel{{JSON: jsonValue(tt.json)}}
+
+			var diags diag.Diagnostics
+			if got := m.Value(context.Background(), &diags); got != nil {
+				t.Errorf("Value() = %s, want nil when json carries a typed key", got)
+			}
+			if !diags.HasError() {
+				t.Fatal("Value() returned no diagnostics, want a typed-key error")
+			}
+
+			found := false
+			for _, diagnostic := range diags.Errors() {
+				withPath, ok := diagnostic.(diag.DiagnosticWithPath)
+				if !ok {
+					continue
+				}
+				if withPath.Path().String() != "backends[0].json" {
+					continue
+				}
+				if strings.Contains(diagnostic.Detail(), tt.detail) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("diagnostics do not name backends[0].json with %q: %v", tt.detail, diags)
+			}
+		})
+	}
+}
+
+// TestTrafficRouteBackendJSONEmptyObjectRoundTrips proves the generic json
+// variant is sent verbatim: no synthetic weight is injected, so json = {}
+// reads back as {} instead of null.
+func TestTrafficRouteBackendJSONEmptyObjectRoundTrips(t *testing.T) {
+	tests := []struct {
+		name   string
+		weight types.Int64
+		want   string
+	}{
+		{
+			name:   "without weight",
+			weight: types.Int64Null(),
+			want:   `{"name":"r","backends":[{}]}`,
+		},
+		{
+			name:   "with weight",
+			weight: types.Int64Value(2),
+			want:   `{"name":"r","backends":[{"weight":2}]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newModel()
+			m.Name = types.StringValue("r")
+			m.Backends = []backendModel{{
+				Weight: tt.weight,
+				JSON:   jsonValue(`{}`),
+			}}
+
+			var diags diag.Diagnostics
+			got := m.Value(context.Background(), &diags)
+			if diags.HasError() {
+				t.Fatalf("Value() returned diagnostics: %v", diags)
+			}
+			if string(got) != tt.want {
+				t.Fatalf("Value() = %s, want %s", got, tt.want)
+			}
+
+			decoded := newModel()
+			decoded.SetValue(context.Background(), got, &diags)
+			if diags.HasError() {
+				t.Fatalf("SetValue() returned diagnostics: %v", diags)
+			}
+			if len(decoded.Backends) != 1 {
+				t.Fatalf("len(Backends) = %d, want 1", len(decoded.Backends))
+			}
+			if decoded.Backends[0].JSON.IsNull() || decoded.Backends[0].JSON.ValueString() != "{}" {
+				t.Errorf("decoded json = %v, want {}", decoded.Backends[0].JSON)
+			}
+			if tt.weight.IsNull() {
+				if !decoded.Backends[0].Weight.IsNull() {
+					t.Errorf("decoded weight = %d, want null", decoded.Backends[0].Weight.ValueInt64())
+				}
+			} else if weight := decoded.Backends[0].Weight.ValueInt64(); weight != 2 {
+				t.Errorf("decoded weight = %d, want 2", weight)
+			}
+
+			var roundTrip diag.Diagnostics
+			if again := decoded.Value(context.Background(), &roundTrip); string(again) != tt.want {
+				t.Errorf("round-trip Value() = %s, want %s", again, tt.want)
+			}
+			if roundTrip.HasError() {
+				t.Errorf("round-trip Value() returned diagnostics: %v", roundTrip)
+			}
+		})
 	}
 }
 

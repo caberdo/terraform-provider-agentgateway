@@ -61,9 +61,10 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 				ImportStateId:     accRouteName,
 				ImportStateVerify: true,
 				// Read preserves JSON leaves the configuration left null, and a
-				// gateway may normalize or omit the route-level policies.
+				// gateway may normalize or omit route-level policies, the
+				// namespace/rule name, hostnames and the defaulted weight.
 				ExpectNonEmptyPlan:      true,
-				ImportStateVerifyIgnore: []string{"policies_json"},
+				ImportStateVerifyIgnore: []string{"policies_json", "rule_name", "namespace", "hostnames", "weight", "backends.0.weight"},
 			},
 			{
 				Config: testAccTrafficRouteUpdatedConfig,

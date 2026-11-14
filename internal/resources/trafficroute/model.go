@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -403,11 +404,20 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 		if isSet(backend.JSON) {
 			merged, err := mergeBackendJSON(backend.JSON.ValueString(), weight)
 			if err != nil {
-				diags.AddAttributeError(
-					backendPath.AtName("json"),
-					"Invalid traffic route backend",
-					"json must be a JSON object; correct the json attribute and re-apply",
-				)
+				var keyErr *backendJSONKeyError
+				if errors.As(err, &keyErr) {
+					diags.AddAttributeError(
+						backendPath.AtName("json"),
+						"Invalid traffic route backend",
+						backendJSONKeyMessage(keyErr.key),
+					)
+				} else {
+					diags.AddAttributeError(
+						backendPath.AtName("json"),
+						"Invalid traffic route backend",
+						"json must be a JSON object; correct the json attribute and re-apply",
+					)
+				}
 				continue
 			}
 			out = append(out, merged)
@@ -415,7 +425,8 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 		}
 
 		// The server defaults an omitted weight to 1 (spec §7.11); send it so
-		// the stored value is explicit and never unknown.
+		// the stored value is explicit and never unknown. The generic json
+		// variant never gets a synthetic weight: it must round-trip unchanged.
 		if payload.Weight == nil {
 			defaultWeight := int64(1)
 			payload.Weight = &defaultWeight
@@ -434,9 +445,39 @@ func (m *model) backendPayloads(diags *diag.Diagnostics) []json.RawMessage {
 	return out
 }
 
+// backendJSONKeyError reports a typed backend key that the generic json
+// variant may not carry.
+type backendJSONKeyError struct {
+	key string
+}
+
+func (e *backendJSONKeyError) Error() string { return e.key }
+
+// backendJSONKeyMessages maps a typed backend key to the sibling Terraform
+// attribute that must carry it instead. A key inside json would be extracted
+// into the typed attribute on read, so the json object would never round-trip.
+var backendJSONKeyMessages = map[string]string{
+	"weight":  "weight must be set as the sibling weight attribute, not inside json",
+	"host":    "host must be set as the sibling host block, not inside json",
+	"backend": "backend must be set as the sibling backend block, not inside json",
+	"service": "service must be set as the sibling service_json attribute, not inside json",
+	"mcp":     "mcp must be set as the sibling mcp_json attribute, not inside json",
+	"ai":      "ai must be set as the sibling ai_json attribute, not inside json",
+}
+
+// backendJSONKeyMessage returns the diagnostic detail for a typed key found
+// inside the generic json object.
+func backendJSONKeyMessage(key string) string {
+	if message, ok := backendJSONKeyMessages[key]; ok {
+		return message
+	}
+	return key + " must not be set inside json"
+}
+
 // mergeBackendJSON merges a generic backend object with the weight attribute.
-// An explicit weight wins; otherwise the object's own weight is kept, and a
-// missing weight defaults to 1.
+// An explicit weight wins; the object is otherwise sent verbatim. Typed keys
+// are rejected because read-back extracts them into their own attributes, which
+// would drop them from json and cause a perpetual diff.
 func mergeBackendJSON(raw string, weight *int64) (json.RawMessage, error) {
 	var body map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
@@ -445,11 +486,13 @@ func mergeBackendJSON(raw string, weight *int64) (json.RawMessage, error) {
 	if body == nil {
 		body = make(map[string]json.RawMessage)
 	}
-	switch {
-	case weight != nil:
+	for key := range backendJSONKeyMessages {
+		if _, ok := body[key]; ok {
+			return nil, &backendJSONKeyError{key: key}
+		}
+	}
+	if weight != nil {
 		body["weight"] = json.RawMessage(strconv.FormatInt(*weight, 10))
-	case body["weight"] == nil:
-		body["weight"] = json.RawMessage("1")
 	}
 	return json.Marshal(body)
 }
@@ -582,7 +625,11 @@ func decodeBackend(raw json.RawMessage) (backendModel, error) {
 		}
 		extras[key] = value
 	}
-	if len(extras) > 0 {
+	// A backend with no typed variant is the generic json variant, including an
+	// empty object: json = {} must read back as {} rather than null.
+	typedVariant := decoded.Host != nil || decoded.Backend != nil ||
+		isSet(backend.Service) || isSet(backend.MCP) || isSet(backend.AI)
+	if len(extras) > 0 || !typedVariant {
 		encoded, err := json.Marshal(extras)
 		if err != nil {
 			return backendModel{}, err
