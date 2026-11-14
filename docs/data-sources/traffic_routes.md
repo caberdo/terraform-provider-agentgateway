@@ -27,13 +27,16 @@ output "route_hostnames" {
   }
 }
 
-# Backends are raw JSON objects; decode them to inspect a backend field.
+# Backends are raw JSON objects; decode them to inspect a backend field. The
+# list is sensitive because backend policies can carry credentials, so the
+# output must be marked sensitive as well.
 output "api_route_backends" {
   value = [
     for route in data.agentgateway_traffic_routes.api.routes : [
       for backend in route.backends : jsondecode(backend)
     ]
   ]
+  sensitive = true
 }
 ```
 
