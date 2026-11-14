@@ -1,4 +1,4 @@
-# Every gateway the agentgateway currently holds, sorted by name.
+# Every gateway the agentgateway currently holds, sorted by id.
 data "agentgateway_traffic_gateways" "all" {}
 
 # Narrow the listing to gateways whose name starts with "public-".

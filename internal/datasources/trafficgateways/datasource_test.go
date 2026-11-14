@@ -1,11 +1,36 @@
 package trafficgateways
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/agentgatewaytest"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// TestFlattenGatewayOmittedListenersIsEmpty pins that an omitted listeners
+// array becomes an empty collection, not null: a null list cannot be iterated
+// in Terraform, and examples iterate gateway.listeners.
+func TestFlattenGatewayOmittedListenersIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	gateways, diags := flatten([]configresource.Resource{
+		{ID: "plain", Value: json.RawMessage(`{"name":"plain"}`)},
+	})
+	if diags.HasError() {
+		t.Fatalf("flatten() returned diagnostics: %v", diags)
+	}
+	if len(gateways) != 1 {
+		t.Fatalf("flatten() returned %d gateways, want 1", len(gateways))
+	}
+	if gateways[0].Listeners == nil {
+		t.Fatal("listeners is null; an omitted array must be an empty collection")
+	}
+	if len(gateways[0].Listeners) != 0 {
+		t.Fatalf("listeners has %d elements, want 0", len(gateways[0].Listeners))
+	}
+}
 
 // TestTrafficGatewaysDataSource pins the listing contract: deterministic order
 // by id, the name_prefix filter and the computed "<kind>:<prefix>" id.

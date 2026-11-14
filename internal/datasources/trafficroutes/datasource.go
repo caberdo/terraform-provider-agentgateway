@@ -71,7 +71,7 @@ func (d *dataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, r
 // Schema returns the data source schema.
 func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Lists the `traffic.route` config resources the gateway holds, sorted by name. " +
+		MarkdownDescription: "Lists the `traffic.route` config resources the gateway holds, sorted by id. " +
 			"Use `name_prefix` to narrow the listing.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -84,7 +84,7 @@ func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 			},
 			"routes": schema.ListNestedAttribute{
 				Computed:            true,
-				MarkdownDescription: "The matching routes, sorted by name.",
+				MarkdownDescription: "The matching routes, sorted by id.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -213,6 +213,10 @@ func flattenRoute(id string, value routeValue) routeModel {
 		for _, backend := range *value.Backends {
 			backends = append(backends, jsontypes.NewNormalizedValue(string(backend)))
 		}
+	} else {
+		// An omitted array is an empty collection, never null: null cannot be
+		// iterated in Terraform.
+		backends = []jsontypes.Normalized{}
 	}
 
 	return routeModel{
@@ -223,10 +227,12 @@ func flattenRoute(id string, value routeValue) routeModel {
 	}
 }
 
-// stringList converts an optional JSON string array into a Terraform list.
+// stringList converts an optional JSON string array into a Terraform list. An
+// omitted array is an empty collection, never null: null cannot be iterated in
+// Terraform.
 func stringList(values *[]string) []types.String {
 	if values == nil {
-		return nil
+		return []types.String{}
 	}
 	out := make([]types.String, 0, len(*values))
 	for _, value := range *values {

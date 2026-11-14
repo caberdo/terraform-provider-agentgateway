@@ -5,13 +5,14 @@ package effectiveconfig
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/providerdata"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -26,7 +27,7 @@ const (
 // it can be marked Sensitive as a whole: the effective config contains key
 // material for apiKey policies and provider credentials.
 type model struct {
-	JSON types.String `tfsdk:"json"`
+	JSON jsontypes.Normalized `tfsdk:"json"`
 }
 
 // dataSource is the agentgateway_effective_config implementation.
@@ -53,7 +54,8 @@ func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 			"json": schema.StringAttribute{
 				Computed:            true,
 				Sensitive:           true,
-				MarkdownDescription: "The raw effective configuration document. Marked sensitive as a whole.",
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "The effective configuration document as normalized JSON. Marked sensitive as a whole.",
 			},
 		},
 	}
@@ -104,15 +106,16 @@ func (d *dataSource) Read(ctx context.Context, req datasource.ReadRequest, resp 
 		return
 	}
 
-	if len(body) == 0 {
+	document, err := normalize(body)
+	if err != nil {
 		resp.Diagnostics.AddError(
 			typeName+" read failed",
-			"the gateway returned an empty effective configuration; check the gateway's config store and retry",
+			"the gateway returned an effective configuration that is not valid JSON; check that /api/config/effective answers with a JSON document and retry",
 		)
 		return
 	}
 
-	model.JSON = types.StringValue(string(body))
+	model.JSON = document
 
 	// Only the size is logged: the document itself may contain secrets.
 	tflog.Debug(ctx, "read effective config", map[string]any{
@@ -120,6 +123,19 @@ func (d *dataSource) Read(ctx context.Context, req datasource.ReadRequest, resp 
 	})
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+// normalize validates the body and stores it as normalized JSON. A non-JSON
+// body is rejected: the attribute is typed JSON, so storing an arbitrary string
+// would only move the failure to the next plan.
+func normalize(body []byte) (jsontypes.Normalized, error) {
+	if len(body) == 0 {
+		return jsontypes.NewNormalizedNull(), fmt.Errorf("empty effective configuration")
+	}
+	if !json.Valid(body) {
+		return jsontypes.NewNormalizedNull(), fmt.Errorf("effective configuration is not valid JSON")
+	}
+	return jsontypes.NewNormalizedValue(string(body)), nil
 }
 
 // timeout returns the effective read timeout.

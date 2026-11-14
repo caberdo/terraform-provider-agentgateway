@@ -30,6 +30,32 @@ data "agentgateway_effective_config" "test" {}
 	})
 }
 
+// TestEffectiveConfigRejectsNonJSON pins that the attribute is typed JSON: a
+// non-JSON body is rejected instead of being stored as an opaque string.
+func TestEffectiveConfigRejectsNonJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{"", "not json", "{\"a\":"} {
+		if _, err := normalize([]byte(body)); err == nil {
+			t.Errorf("normalize(%q) returned no error; a non-JSON body must be rejected", body)
+		}
+	}
+}
+
+// TestEffectiveConfigNormalizesJSON pins that a JSON document is stored as
+// normalized JSON.
+func TestEffectiveConfigNormalizesJSON(t *testing.T) {
+	t.Parallel()
+
+	document, err := normalize([]byte(`{"gateways":[{"name":"default"}]}`))
+	if err != nil {
+		t.Fatalf("normalize() returned an error: %v", err)
+	}
+	if document.IsNull() {
+		t.Fatal("normalize() returned a null value")
+	}
+}
+
 // TestEffectiveConfigIsSensitive pins that the whole document is sensitive: it
 // can contain provider credentials and API key material (design C19).
 func TestEffectiveConfigIsSensitive(t *testing.T) {

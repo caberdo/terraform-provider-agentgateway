@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/acctest"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/client"
@@ -14,43 +15,31 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-const accProviderName = "acctest-config-provider"
-
 // TestAccConfigResourcesDataSource creates a provider in the same test and
 // reads it back through the generic kind listing. It is compiled by `go test`
 // and only runs when TF_ACC is set and the acceptance environment is
 // reachable.
+//
+// Names carry a per-run suffix: the acceptance gateway is shared, so a stale
+// provider left by a failed run must not change this test's counts.
 func TestAccConfigResourcesDataSource(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
 
+	suffix := time.Now().UnixNano()
+	prefix := fmt.Sprintf("acctest-config-%d", suffix)
+	providerName := prefix + "-provider"
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testFactories(endpoint),
-		CheckDestroy:             checkProviderDestroyed(endpoint),
+		CheckDestroy:             checkProviderDestroyed(endpoint, providerName),
 		Steps: []resource.TestStep{
 			{
-				Config: `
-resource "agentgateway_test_resource" "provider" {
-  name = "` + accProviderName + `"
-
-  value_json = jsonencode({
-    name     = "` + accProviderName + `"
-    provider = "openai"
-    model    = "gpt-4o-mini"
-  })
-}
-
-data "agentgateway_config_resources" "test" {
-  kind      = "llm.provider"
-  id_prefix = "acctest-config"
-
-  depends_on = [agentgateway_test_resource.provider]
-}
-`,
+				Config: configResourcesConfig(prefix, providerName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "id", "llm.provider:acctest-config"),
+					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "id", "llm.provider:"+prefix),
 					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "resources.#", "1"),
-					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "resources.0.id", accProviderName),
+					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "resources.0.id", providerName),
 					resource.TestCheckResourceAttr("data.agentgateway_config_resources.test", "resources.0.revision", "1"),
 					resource.TestCheckResourceAttrSet("data.agentgateway_config_resources.test", "resources.0.created_at"),
 					resource.TestCheckResourceAttrSet("data.agentgateway_config_resources.test", "resources.0.updated_at"),
@@ -64,8 +53,31 @@ data "agentgateway_config_resources" "test" {
 	})
 }
 
+// configResourcesConfig builds the acceptance configuration for the provider
+// and the listing.
+func configResourcesConfig(prefix, providerName string) string {
+	return fmt.Sprintf(`
+resource "agentgateway_test_resource" "provider" {
+  name = %q
+
+  value_json = jsonencode({
+    name     = %q
+    provider = "openai"
+    model    = "gpt-4o-mini"
+  })
+}
+
+data "agentgateway_config_resources" "test" {
+  kind      = "llm.provider"
+  id_prefix = %q
+
+  depends_on = [agentgateway_test_resource.provider]
+}
+`, providerName, providerName, prefix)
+}
+
 // checkProviderDestroyed proves the backing provider is gone after destroy.
-func checkProviderDestroyed(endpoint string) resource.TestCheckFunc {
+func checkProviderDestroyed(endpoint string, names ...string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
 		c, err := client.New(client.Config{
 			BaseURL:    endpoint,
@@ -81,8 +93,10 @@ func checkProviderDestroyed(endpoint string) resource.TestCheckFunc {
 			return fmt.Errorf("listing llm providers: %w", err)
 		}
 		for _, res := range list {
-			if res.ID == accProviderName {
-				return fmt.Errorf("llm provider %q still exists after destroy", res.ID)
+			for _, name := range names {
+				if res.ID == name {
+					return fmt.Errorf("llm provider %q still exists after destroy", res.ID)
+				}
 			}
 		}
 		return nil

@@ -1,4 +1,4 @@
-# Every route the agentgateway currently holds, sorted by name.
+# Every route the agentgateway currently holds, sorted by id.
 data "agentgateway_traffic_routes" "all" {}
 
 # Narrow the listing to routes whose name starts with "api-".

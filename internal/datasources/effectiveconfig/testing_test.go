@@ -23,10 +23,10 @@ import (
 
 const (
 	// testResourceTypeName is the type name of the throwaway resource that
-	// creates the backing traffic.gateway resources for these tests.
+	// creates the backing llm.provider resource for these tests.
 	testResourceTypeName = "agentgateway_test_resource"
 	// testKind is the kind the throwaway resource writes.
-	testKind = configresource.KindTrafficGateway
+	testKind = configresource.KindLLMProvider
 )
 
 // testFactories builds a provider that registers only the data source under

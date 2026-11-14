@@ -5,8 +5,39 @@ import (
 	"testing"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/agentgatewaytest"
+	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// TestFlattenRouteOmittedCollectionsAreEmpty pins that omitted arrays become
+// empty collections, not null: a null list cannot be iterated in Terraform,
+// and examples iterate route.backends.
+func TestFlattenRouteOmittedCollectionsAreEmpty(t *testing.T) {
+	t.Parallel()
+
+	routes, diags := flatten([]configresource.Resource{
+		{ID: "bare", Value: json.RawMessage(`{"name":"bare"}`)},
+	})
+	if diags.HasError() {
+		t.Fatalf("flatten() returned diagnostics: %v", diags)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("flatten() returned %d routes, want 1", len(routes))
+	}
+	if routes[0].Gateways == nil {
+		t.Fatal("gateways is null; an omitted array must be an empty collection")
+	}
+	if routes[0].Hostnames == nil {
+		t.Fatal("hostnames is null; an omitted array must be an empty collection")
+	}
+	if routes[0].Backends == nil {
+		t.Fatal("backends is null; an omitted array must be an empty collection")
+	}
+	if len(routes[0].Gateways) != 0 || len(routes[0].Hostnames) != 0 || len(routes[0].Backends) != 0 {
+		t.Fatalf("expected empty collections, got gateways=%d hostnames=%d backends=%d",
+			len(routes[0].Gateways), len(routes[0].Hostnames), len(routes[0].Backends))
+	}
+}
 
 // TestTrafficRoutesDataSource pins the listing contract: deterministic order
 // by id, the name_prefix filter and the computed "<kind>:<prefix>" id.

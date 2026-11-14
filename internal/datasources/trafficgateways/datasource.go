@@ -86,7 +86,7 @@ func (d *dataSource) Metadata(_ context.Context, _ datasource.MetadataRequest, r
 // Schema returns the data source schema.
 func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Lists the `traffic.gateway` config resources the gateway holds, sorted by name. " +
+		MarkdownDescription: "Lists the `traffic.gateway` config resources the gateway holds, sorted by id. " +
 			"Use `name_prefix` to narrow the listing.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -99,7 +99,7 @@ func (d *dataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp 
 			},
 			"gateways": schema.ListNestedAttribute{
 				Computed:            true,
-				MarkdownDescription: "The matching gateways, sorted by name.",
+				MarkdownDescription: "The matching gateways, sorted by id.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -249,6 +249,10 @@ func flattenGateway(id string, value gatewayValue) gatewayModel {
 				Protocol: types.StringPointerValue(listener.Protocol),
 			})
 		}
+	} else {
+		// A gateway that omits listeners still lists an empty collection: a
+		// null list cannot be iterated in Terraform and would break consumers.
+		listeners = []listenerModel{}
 	}
 
 	return gatewayModel{
