@@ -76,7 +76,7 @@ jobs:
       AGENTGATEWAY_EXPECT_VERSION: ${{ matrix.agentgateway }}
       # One compose project per version so matrices cannot share containers,
       # volumes or port bindings.
-      COMPOSE_PROJECT_NAME: agentgateway-acc-${{ matrix.agentgateway }}
+      COMPOSE_PROJECT_NAME: agentgateway-acc-${{ replace(matrix.agentgateway, '.', '-') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
