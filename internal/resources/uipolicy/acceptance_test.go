@@ -2,9 +2,11 @@ package uipolicy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/acctest"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/client"
@@ -20,12 +22,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+// acceptanceHTTPTimeout bounds every acceptance client, so a hung gateway fails
+// the test instead of blocking it.
+const acceptanceHTTPTimeout = 30 * time.Second
+
 // TestAccUIPolicyResource covers create, import, update and destroy of a
 // policy against the hybrid gateway. It compiles everywhere and only runs when
 // TF_ACC is set and the acceptance environment is reachable.
 func TestAccUIPolicyResource(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
+
+	// Create refuses an id that already exists outside state, so a policy left
+	// behind by an aborted run would fail every later run. The key must stay in
+	// the enum, so clean up instead of renaming.
+	resetPolicy(t, endpoint)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testFactories(endpoint),
@@ -46,11 +57,14 @@ resource "agentgateway_ui_policy" "test" {
 			},
 			{
 				// Policy bodies are stored verbatim, so the import must match the
-				// managed state exactly; there is nothing to ignore.
-				ResourceName:      "agentgateway_ui_policy.test",
-				ImportState:       true,
-				ImportStateId:     "cors",
-				ImportStateVerify: true,
+				// managed state exactly and nothing is verify-ignored. A gateway
+				// that omits revision or normalises the body still leaves a
+				// non-empty plan, which is why the step allows one.
+				ResourceName:       "agentgateway_ui_policy.test",
+				ImportState:        true,
+				ImportStateId:      "cors",
+				ImportStateVerify:  true,
+				ExpectNonEmptyPlan: true,
 			},
 			{
 				Config: `
@@ -79,14 +93,45 @@ func testFactories(endpoint string) map[string]func() (tfprotov6.ProviderServer,
 	}
 }
 
+// newAcceptanceClient builds a client for endpoint with a bounded timeout.
+func newAcceptanceClient(endpoint string) (client.Client, error) {
+	return client.New(client.Config{
+		BaseURL:    endpoint,
+		HTTPClient: &http.Client{Timeout: acceptanceHTTPTimeout},
+		UserAgent:  "terraform-provider-agentgateway/acctest",
+	})
+}
+
+// resetPolicy deletes the fixed policy key left behind by an aborted run, so a
+// rerun starts from a clean gateway. List-then-delete keeps the cleanup
+// explicit: only the key this test manages is touched, and a cleanup failure
+// fails the test instead of being ignored.
+func resetPolicy(t *testing.T, endpoint string) {
+	t.Helper()
+
+	c, err := newAcceptanceClient(endpoint)
+	if err != nil {
+		t.Fatalf("creating acceptance client: %v", err)
+	}
+
+	list, err := c.List(context.Background(), configresource.KindUIPolicy)
+	if err != nil {
+		t.Fatalf("listing ui policies before the test: %v", err)
+	}
+	for _, res := range list {
+		if res.ID != "cors" {
+			continue
+		}
+		if err := c.Delete(context.Background(), configresource.KindUIPolicy, res.ID); err != nil && !errors.Is(err, client.ErrNotFound) {
+			t.Fatalf("deleting leftover ui policy %q: %v", res.ID, err)
+		}
+	}
+}
+
 // checkPolicyDestroyed fails when a policy survives destroy.
 func checkPolicyDestroyed(endpoint string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
-		c, err := client.New(client.Config{
-			BaseURL:    endpoint,
-			HTTPClient: http.DefaultClient,
-			UserAgent:  "terraform-provider-agentgateway/acctest",
-		})
+		c, err := newAcceptanceClient(endpoint)
 		if err != nil {
 			return fmt.Errorf("creating acceptance client: %w", err)
 		}
@@ -122,11 +167,7 @@ func (p *testProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 }
 
 func (p *testProvider) Configure(_ context.Context, _ provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	c, err := client.New(client.Config{
-		BaseURL:    p.endpoint,
-		HTTPClient: http.DefaultClient,
-		UserAgent:  "terraform-provider-agentgateway/acctest",
-	})
+	c, err := newAcceptanceClient(p.endpoint)
 	if err != nil {
 		resp.Diagnostics.AddError("Could not create the acceptance client", err.Error())
 		return

@@ -43,10 +43,7 @@ func TestFrontendPolicySchema(t *testing.T) {
 	if len(name.Validators) != 1 {
 		t.Fatalf("expected exactly one enum validator on name, got %d", len(name.Validators))
 	}
-	// "tls" is a frontend.policy key; "csrf" is a ui.policy key, so accepting
-	// the first and rejecting the second proves the frontend.policy enum is
-	// wired.
-	assertFrontendNameEnum(t, name.Validators, "tls", "csrf")
+	assertFrontendNameEnumSet(t, name.Validators)
 	if len(name.PlanModifiers) != 1 {
 		t.Fatalf("expected exactly one plan modifier on name (RequiresReplace), got %d", len(name.PlanModifiers))
 	}
@@ -213,26 +210,51 @@ func frontendPolicyBody(t *testing.T, server *agentgatewaytest.Server, id string
 	return nil
 }
 
-// assertFrontendNameEnum runs the name validator against one accepted and one
-// rejected value, proving the resource wires the frontend.policy enum rather
-// than another one.
-func assertFrontendNameEnum(t *testing.T, validators []validator.String, accepted, rejected string) {
+// assertFrontendNameEnumSet proves the name validator accepts exactly the
+// frontend.policy keys: every key in configresource.FrontendPolicyKeys passes,
+// and no key from any other policy enum (or an unknown name) does. Running the
+// validator over the union of the four policy enums turns "one in, one out"
+// probing into a set equality check.
+func assertFrontendNameEnumSet(t *testing.T, validators []validator.String) {
 	t.Helper()
 
-	for _, tc := range []struct {
-		value   string
-		wantErr bool
-	}{
-		{accepted, false},
-		{rejected, true},
+	candidates := map[string]struct{}{"notAPolicy": {}}
+	for _, keys := range [][]string{
+		configresource.LLMPolicyKeys,
+		configresource.MCPPolicyKeys,
+		configresource.UIPolicyKeys,
+		configresource.FrontendPolicyKeys,
 	} {
+		for _, key := range keys {
+			candidates[key] = struct{}{}
+		}
+	}
+
+	accepted := map[string]struct{}{}
+	for key := range candidates {
 		var resp validator.StringResponse
 		validators[0].ValidateString(context.Background(), validator.StringRequest{
 			Path:        path.Root("name"),
-			ConfigValue: types.StringValue(tc.value),
+			ConfigValue: types.StringValue(key),
 		}, &resp)
-		if resp.Diagnostics.HasError() != tc.wantErr {
-			t.Errorf("name = %q: diagnostics = %v, wantErr %v", tc.value, resp.Diagnostics, tc.wantErr)
+		if !resp.Diagnostics.HasError() {
+			accepted[key] = struct{}{}
+		}
+	}
+
+	want := map[string]struct{}{}
+	for _, key := range configresource.FrontendPolicyKeys {
+		want[key] = struct{}{}
+	}
+
+	for key := range want {
+		if _, ok := accepted[key]; !ok {
+			t.Errorf("frontend.policy key %q was rejected by the name validator", key)
+		}
+	}
+	for key := range accepted {
+		if _, ok := want[key]; !ok {
+			t.Errorf("name validator accepted %q, which is not a frontend.policy key", key)
 		}
 	}
 }
@@ -244,8 +266,8 @@ func assertFrontendNameReplaces(t *testing.T, s schema.Schema, modifiers []planm
 
 	var resp planmodifier.StringResponse
 	modifiers[0].PlanModifyString(context.Background(), planmodifier.StringRequest{
-		State:      tfsdk.State{Schema: s, Raw: frontendPolicyRaw(oldName)},
-		Plan:       tfsdk.Plan{Schema: s, Raw: frontendPolicyRaw(newName)},
+		State:      tfsdk.State{Schema: s, Raw: frontendPolicyRaw(t, s, oldName)},
+		Plan:       tfsdk.Plan{Schema: s, Raw: frontendPolicyRaw(t, s, newName)},
 		StateValue: types.StringValue(oldName),
 		PlanValue:  types.StringValue(newName),
 		Path:       path.Root("name"),
@@ -260,17 +282,23 @@ func assertFrontendNameReplaces(t *testing.T, s schema.Schema, modifiers []planm
 
 // frontendPolicyRaw is a complete policy object with the given name, used to
 // give the plan modifier a real state and plan instead of the null values that
-// mean create and destroy.
-func frontendPolicyRaw(name string) tftypes.Value {
-	return tftypes.NewValue(tftypes.Object{AttributeTypes: map[string]tftypes.Type{
-		"name":     tftypes.String,
-		"spec":     tftypes.String,
-		"id":       tftypes.String,
-		"revision": tftypes.Number,
-	}}, map[string]tftypes.Value{
-		"name":     tftypes.NewValue(tftypes.String, name),
-		"spec":     tftypes.NewValue(tftypes.String, `{}`),
-		"id":       tftypes.NewValue(tftypes.String, name),
-		"revision": tftypes.NewValue(tftypes.Number, 1),
+// mean create and destroy. Every attribute type is derived from the schema, so
+// the fixture cannot drift from it: spec is jsontypes.Normalized, not a bare
+// tftypes.String declaration.
+func frontendPolicyRaw(t *testing.T, s schema.Schema, name string) tftypes.Value {
+	t.Helper()
+
+	ctx := context.Background()
+	objType, ok := s.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema type is %T, want tftypes.Object", s.Type().TerraformType(ctx))
+	}
+
+	attr := objType.AttributeTypes
+	return tftypes.NewValue(objType, map[string]tftypes.Value{
+		"name":     tftypes.NewValue(attr["name"], name),
+		"spec":     tftypes.NewValue(attr["spec"], `{}`),
+		"id":       tftypes.NewValue(attr["id"], name),
+		"revision": tftypes.NewValue(attr["revision"], 1),
 	})
 }
