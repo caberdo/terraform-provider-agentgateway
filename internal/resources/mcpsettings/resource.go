@@ -8,6 +8,7 @@ import (
 	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/resourceutil"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -155,13 +156,17 @@ func resourceSchema() schema.Schema {
 				// `[]` as absent when the configuration leaves the attribute
 				// unset. Computed would make the attribute sticky, so removing
 				// it from the configuration would never detach the routes.
-				MarkdownDescription: "Gateways that serve the MCP routes, as `<gateway>` or `<gateway>/<listener>`. Defaults to the gateway named `default` server-side.",
+				MarkdownDescription: "Gateways that serve the MCP routes, as `<gateway>` or `<gateway>/<listener>`. Defaults to the gateway named `default` server-side. Conflicts with `port`.",
+				Validators: []validator.List{
+					listvalidator.ConflictsWith(path.MatchRoot("port")),
+				},
 			},
 			"port": schema.Int64Attribute{
 				Optional:            true,
-				MarkdownDescription: "Port that serves the MCP routes. Deprecated upstream; use `gateways` instead.",
+				MarkdownDescription: "Port that serves the MCP routes. Deprecated upstream; use `gateways` instead. Conflicts with `gateways`.",
 				Validators: []validator.Int64{
 					int64validator.Between(0, 65535),
+					int64validator.ConflictsWith(path.MatchRoot("gateways")),
 				},
 			},
 			"stateful_mode": schema.StringAttribute{
@@ -192,7 +197,10 @@ func resourceSchema() schema.Schema {
 			},
 			"sse_keep_alive": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Interval at which SSE keep-alive comments are sent on long-lived MCP streams, as a Go duration such as `30s`. Disabled when unset.",
+				MarkdownDescription: "Interval at which SSE keep-alive comments are sent on long-lived MCP streams, as a Go duration such as `30s` or `1m30s`. Disabled when unset.",
+				Validators: []validator.String{
+					goDuration{},
+				},
 			},
 			"dns_rebinding_protection": schema.BoolAttribute{
 				Optional: true,

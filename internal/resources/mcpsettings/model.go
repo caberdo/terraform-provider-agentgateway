@@ -65,6 +65,18 @@ type serverValue struct {
 
 // Value marshals the model to the gateway's mcp.settings value object.
 func (m *model) Value(ctx context.Context, diags *diag.Diagnostics) json.RawMessage {
+	hasGateways := !m.Gateways.IsNull() && !m.Gateways.IsUnknown()
+	hasPort := !m.Port.IsNull() && !m.Port.IsUnknown()
+	if hasGateways && hasPort {
+		// The schema rejects this at plan time; repeating it here means a
+		// hand-built model cannot produce a payload the gateway will reject.
+		diags.AddError(
+			"Invalid agentgateway_mcp_settings",
+			"gateways and port conflict; set gateways, or port for the deprecated listener, but not both",
+		)
+		return nil
+	}
+
 	value := settingsValue{
 		Port:                   int64OrNil(m.Port),
 		StatefulMode:           stringOrEmpty(m.StatefulMode),
@@ -74,7 +86,7 @@ func (m *model) Value(ctx context.Context, diags *diag.Diagnostics) json.RawMess
 		DNSRebindingProtection: boolOrNil(m.DNSRebindingProtection),
 	}
 
-	if !m.Gateways.IsNull() && !m.Gateways.IsUnknown() {
+	if hasGateways {
 		var gateways []string
 		if d := m.Gateways.ElementsAs(ctx, &gateways, false); d.HasError() {
 			diags.Append(d...)

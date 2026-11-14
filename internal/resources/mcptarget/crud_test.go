@@ -79,6 +79,135 @@ resource "agentgateway_mcp_target" "test" {
 	})
 }
 
+// TestMCPTargetPlanTimeValidation pins the transport rules that must fail
+// during `terraform plan` instead of at apply time: host and backend are
+// mutually exclusive, port requires host, a network transport needs one of the
+// two, and policies_json cannot be combined with stdio.
+func TestMCPTargetPlanTimeValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name: "host and backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  mcp = {
+    host    = "mcp.example.com"
+    backend = "mcp-backend"
+  }
+}`,
+			wantErr: `mutually exclusive`,
+		},
+		{
+			name: "neither host nor backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  mcp = {
+    path = "/mcp"
+  }
+}`,
+			wantErr: `host or backend is required`,
+		},
+		{
+			name: "port without host",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  mcp = {
+    port = 8080
+    path = "/mcp"
+  }
+}`,
+			wantErr: `port requires host`,
+		},
+		{
+			name: "port with backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  mcp = {
+    backend = "mcp-backend"
+    port    = 8080
+  }
+}`,
+			wantErr: `port requires host`,
+		},
+		{
+			name: "openapi host and backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  openapi = {
+    host       = "api.example.com"
+    backend    = "api-backend"
+    schema_json = jsonencode({ url = "https://api.example.com/openapi.json" })
+  }
+}`,
+			wantErr: `mutually exclusive`,
+		},
+		{
+			name: "policies json on stdio",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "conflict"
+  stdio = {
+    cmd = "npx"
+  }
+  policies_json = jsonencode({ cors = { allowOrigins = ["*"] } })
+}`,
+			wantErr: `not supported on a stdio target`,
+		},
+		{
+			name: "valid host port path",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "valid"
+  mcp = {
+    host = "mcp.example.com"
+    port = 8080
+    path = "/mcp"
+  }
+}`,
+		},
+		{
+			name: "valid backend",
+			config: `
+resource "agentgateway_mcp_target" "test" {
+  name = "valid"
+  mcp = {
+    backend = "mcp-backend"
+    path    = "/mcp"
+  }
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := agentgatewaytest.New(t)
+			step := resource.TestStep{
+				Config:             tt.config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			}
+			if tt.wantErr != "" {
+				step.ExpectError = regexp.MustCompile(tt.wantErr)
+			}
+
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testFactories(server.URL),
+				Steps:                    []resource.TestStep{step},
+			})
+		})
+	}
+}
+
 // TestMCPTargetTransportGroup pins that exactly one transport is required
 // before any request reaches the gateway.
 func TestMCPTargetTransportGroup(t *testing.T) {

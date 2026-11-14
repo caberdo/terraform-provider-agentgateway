@@ -109,6 +109,78 @@ resource "agentgateway_mcp_settings" "test" {
 	}
 }
 
+// TestMCPSettingsPlanTimeValidation pins the settings rules that must fail
+// during `terraform plan`: port and gateways conflict upstream, and
+// sse_keep_alive must be a Go duration.
+func TestMCPSettingsPlanTimeValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name: "port and gateways",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  port     = 8080
+  gateways = ["default"]
+}`,
+			wantErr: `cannot be specified when`,
+		},
+		{
+			name: "sse keep alive without unit",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  sse_keep_alive = "30"
+}`,
+			wantErr: `Go duration`,
+		},
+		{
+			name: "sse keep alive not a duration",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  sse_keep_alive = "often"
+}`,
+			wantErr: `Go duration`,
+		},
+		{
+			name: "valid duration",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  sse_keep_alive = "1m30s"
+}`,
+		},
+		{
+			name: "valid gateways",
+			config: `
+resource "agentgateway_mcp_settings" "test" {
+  gateways = ["default"]
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := agentgatewaytest.New(t)
+			step := resource.TestStep{
+				Config:             tt.config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			}
+			if tt.wantErr != "" {
+				step.ExpectError = regexp.MustCompile(tt.wantErr)
+			}
+
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testFactories(server.URL),
+				Steps:                    []resource.TestStep{step},
+			})
+		})
+	}
+}
+
 // TestMCPSettingsSchemaServerPair pins the server name/version rule before any
 // request reaches the gateway.
 func TestMCPSettingsSchemaServerPair(t *testing.T) {

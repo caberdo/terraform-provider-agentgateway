@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/acctest"
@@ -20,7 +21,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-const acceptanceName = "acctest-mcp-target"
+const (
+	// acceptanceName is the base of every target name this file creates:
+	// the target itself, the renamed target and the OpenAPI target. A leaked
+	// resource is caught by the prefix, so a new test that forgets to extend
+	// the destroy check cannot slip through.
+	acceptanceName        = "acctest-mcp-target"
+	openAPIAcceptanceName = acceptanceName + "-openapi"
+)
 
 // TestAccMCPTargetResource covers create, import, update and destroy against
 // the hybrid gateway. It is compiled by `go test` and only runs when TF_ACC is
@@ -81,7 +89,7 @@ func TestAccMCPTargetResource(t *testing.T) {
 }
 
 // TestAccMCPTargetOpenAPITransport covers the openapi transport with its
-// inline schema, which is the only transport that carries a JSON leaf.
+// schema reference, which is the only transport that carries a JSON leaf.
 func TestAccMCPTargetOpenAPITransport(t *testing.T) {
 	acctest.PreCheck(t)
 	endpoint := acctest.EndpointFor(t, acctest.RoleHybrid)
@@ -91,9 +99,20 @@ func TestAccMCPTargetOpenAPITransport(t *testing.T) {
 		CheckDestroy:             checkTargetDestroyed(endpoint),
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: openAPITargetConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("agentgateway_mcp_target.test", "id", openAPIAcceptanceName),
+					resource.TestCheckResourceAttr("agentgateway_mcp_target.test", "openapi.host", "api.example.com"),
+					resource.TestCheckResourceAttrSet("agentgateway_mcp_target.test", "openapi.schema_json"),
+				),
+			},
+		},
+	})
+}
+
+const openAPITargetConfig = `
 resource "agentgateway_mcp_target" "test" {
-  name = "acctest-mcp-target-openapi"
+  name = "` + openAPIAcceptanceName + `"
 
   openapi = {
     host = "api.example.com"
@@ -104,16 +123,8 @@ resource "agentgateway_mcp_target" "test" {
       url = "https://api.example.com/openapi.json"
     })
   }
-}`,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("agentgateway_mcp_target.test", "id", "acctest-mcp-target-openapi"),
-					resource.TestCheckResourceAttr("agentgateway_mcp_target.test", "openapi.host", "api.example.com"),
-					resource.TestCheckResourceAttrSet("agentgateway_mcp_target.test", "openapi.schema_json"),
-				),
-			},
-		},
-	})
 }
+`
 
 const httpTargetConfig = `
 resource "agentgateway_mcp_target" "test" {
@@ -188,7 +199,7 @@ func checkTargetDestroyed(endpoint string) resource.TestCheckFunc {
 			return fmt.Errorf("listing mcp targets: %w", err)
 		}
 		for _, res := range list {
-			if res.ID == acceptanceName || res.ID == acceptanceName+"-renamed" {
+			if strings.HasPrefix(res.ID, acceptanceName) {
 				return fmt.Errorf("mcp target %q still exists after destroy", res.ID)
 			}
 		}

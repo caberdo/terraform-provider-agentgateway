@@ -56,6 +56,11 @@ func TestMCPSettingsValue(t *testing.T) {
 			want:  `{"port":8080}`,
 		},
 		{
+			name:    "port and gateways together",
+			model:   &model{Port: int64Value(8080), Gateways: listValue(t, "default")},
+			wantErr: true,
+		},
+		{
 			name:  "empty gateways list is sent",
 			model: &model{Gateways: types.ListValueMust(types.StringType, []attr.Value{})},
 			want:  `{"gateways":[]}`,

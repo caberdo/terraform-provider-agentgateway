@@ -50,6 +50,16 @@ func TestMCPTargetSchema(t *testing.T) {
 		t.Error("stdio.cmd is not required")
 	}
 
+	// The environment of a spawned MCP server routinely carries tokens, so it
+	// is a secret in state (design §12).
+	env, ok := stdio.Attributes["env"].(schema.MapAttribute)
+	if !ok {
+		t.Fatalf("stdio.env is %T, want schema.MapAttribute", stdio.Attributes["env"])
+	}
+	if !env.IsSensitive() {
+		t.Error("stdio.env is not sensitive; environment variables can carry credentials")
+	}
+
 	openapi := attributes["openapi"].(schema.SingleNestedAttribute)
 	schemaJSON, ok := openapi.Attributes["schema_json"].(schema.StringAttribute)
 	if !ok {

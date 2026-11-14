@@ -43,13 +43,13 @@ func resourceSchema() schema.Schema {
 				Optional:            true,
 				MarkdownDescription: "Streamable HTTP transport. Set either `host` (with an optional `port` and `path`) or `backend` (with an optional `path`), never both.",
 				Attributes:          networkAttributes(),
-				Validators:          []validator.Object{exactlyOneTransport()},
+				Validators:          networkTransportValidators("mcp"),
 			},
 			"sse": schema.SingleNestedAttribute{
 				Optional:            true,
 				MarkdownDescription: "Server-Sent Events transport. Set either `host` (with an optional `port` and `path`) or `backend` (with an optional `path`), never both.",
 				Attributes:          networkAttributes(),
-				Validators:          []validator.Object{exactlyOneTransport()},
+				Validators:          networkTransportValidators("sse"),
 			},
 			"stdio": schema.SingleNestedAttribute{
 				Optional:            true,
@@ -65,9 +65,13 @@ func resourceSchema() schema.Schema {
 						MarkdownDescription: "Arguments passed to `cmd`.",
 					},
 					"env": schema.MapAttribute{
-						Optional:            true,
-						ElementType:         types.StringType,
-						MarkdownDescription: "Environment variables passed to the process.",
+						Optional:    true,
+						ElementType: types.StringType,
+						// The environment of a spawned MCP server routinely
+						// carries tokens, so it is a secret in state (design
+						// §12).
+						Sensitive:           true,
+						MarkdownDescription: "Environment variables passed to the process. Marked sensitive because environment variables routinely carry credentials.",
 					},
 					"clear_env": schema.BoolAttribute{
 						Optional:            true,
@@ -80,7 +84,7 @@ func resourceSchema() schema.Schema {
 				Optional:            true,
 				MarkdownDescription: "OpenAPI transport: the operations in an OpenAPI schema are exposed as MCP tools. Set either `host` (with an optional `port` and `path`) or `backend` (with an optional `path`), never both.",
 				Attributes:          openAPIAttributes(),
-				Validators:          []validator.Object{exactlyOneTransport()},
+				Validators:          networkTransportValidators("openapi"),
 			},
 			"policies_json": schema.StringAttribute{
 				Optional:   true,
@@ -89,6 +93,7 @@ func resourceSchema() schema.Schema {
 				// backendTLS), so the value is a secret in state (design §12).
 				Sensitive:           true,
 				MarkdownDescription: "Transport policies for connecting to the target's backend, as JSON. Not supported on stdio targets. Marked sensitive because `backendAuth` carries credentials.",
+				Validators:          []validator.String{noPoliciesOnStdio{}},
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -102,7 +107,19 @@ func resourceSchema() schema.Schema {
 	}
 }
 
+// networkTransportValidators is the plan-time rule set shared by the mcp, sse
+// and openapi transports: the exactly-one-transport group plus the
+// host/backend/port shape enforced by networkTransport.
+func networkTransportValidators(label string) []validator.Object {
+	return []validator.Object{
+		exactlyOneTransport(),
+		networkTransport{label: label},
+	}
+}
+
 // networkAttributes is the shared host/backend shape of the network transports.
+// The host/backend/port rules are enforced at plan time by networkTransport,
+// which is attached to the transport blocks.
 func networkAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"host": schema.StringAttribute{
