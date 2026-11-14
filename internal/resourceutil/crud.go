@@ -431,14 +431,20 @@ func (r *kindResource) errTitle(operation string) string {
 	return fmt.Sprintf("%s %s failed", r.spec.TypeName, operation)
 }
 
+// errDetail builds the actionable detail sentence. The server message is
+// included whenever the gateway sent one, including for kinds whose id is
+// assigned by the server (llm.apiKey), where there is no id to name.
 func (r *kindResource) errDetail(operation, id, action, serverMsg string) string {
+	var detail string
 	if id == "" {
-		return fmt.Sprintf("%s for %s. %s.", operation, r.spec.Kind, action)
+		detail = fmt.Sprintf("%s for %s. %s.", operation, r.spec.Kind, action)
+	} else {
+		detail = fmt.Sprintf("%s %s/%s failed. %s.", operation, r.spec.Kind, id, action)
 	}
 	if serverMsg == "" {
-		return fmt.Sprintf("%s %s/%s failed. %s.", operation, r.spec.Kind, id, action)
+		return detail
 	}
-	return fmt.Sprintf("%s %s/%s failed. %s. Gateway message: %s", operation, r.spec.Kind, id, action, serverMsg)
+	return fmt.Sprintf("%s Gateway message: %s", detail, serverMsg)
 }
 
 // invalidAttribute returns the configurable schema attribute named as a whole

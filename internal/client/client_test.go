@@ -4,12 +4,122 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/caberdo/terraform-provider-agentgateway/internal/agentgatewaytest"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/client"
 	"github.com/caberdo/terraform-provider-agentgateway/internal/configresource"
 )
+
+// newFixedEnvelopeClient serves one fixed body and returns a client pointed at
+// it, so envelope parsing is tested against the literal API JSON rather than
+// the fake server's encoding.
+func newFixedEnvelopeClient(t *testing.T, method, path, body string) client.Client {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != method || r.URL.Path != path {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := client.New(client.Config{BaseURL: srv.URL, HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+	return c
+}
+
+func assertEnvelopeTimestamps(t *testing.T, res configresource.Resource, wantCreated, wantUpdated time.Time) {
+	t.Helper()
+
+	if !res.CreatedAt.Equal(wantCreated) {
+		t.Errorf("expected createdAt %s, got %s", wantCreated.Format(time.RFC3339), res.CreatedAt.Format(time.RFC3339))
+	}
+	if !res.UpdatedAt.Equal(wantUpdated) {
+		t.Errorf("expected updatedAt %s, got %s", wantUpdated.Format(time.RFC3339), res.UpdatedAt.Format(time.RFC3339))
+	}
+	if got := res.CreatedAt.Format(time.RFC3339); got != wantCreated.Format(time.RFC3339) {
+		t.Errorf("expected RFC3339 createdAt %s, got %s", wantCreated.Format(time.RFC3339), got)
+	}
+}
+
+func TestEnvelopeParsesTimestamps(t *testing.T) {
+	t.Parallel()
+
+	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	updated := time.Date(2026, 1, 3, 4, 5, 6, 0, time.UTC)
+	item := `{"kind":"llm.provider","id":"openai","value":{"name":"openai"},"revision":7,` +
+		`"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-03T04:05:06Z"}`
+	ctx := context.Background()
+
+	t.Run("list response", func(t *testing.T) {
+		t.Parallel()
+
+		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", "["+item+"]")
+		list, err := c.List(ctx, configresource.KindLLMProvider)
+		if err != nil {
+			t.Fatalf("list failed: %v", err)
+		}
+		if len(list) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(list))
+		}
+		assertEnvelopeTimestamps(t, list[0], created, updated)
+	})
+
+	t.Run("single-resource response", func(t *testing.T) {
+		t.Parallel()
+
+		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", item)
+		res, err := c.Update(ctx, configresource.KindLLMProvider, "openai", []byte(`{"name":"openai"}`))
+		if err != nil {
+			t.Fatalf("update failed: %v", err)
+		}
+		assertEnvelopeTimestamps(t, res, created, updated)
+	})
+}
+
+func TestEnvelopeWithoutTimestampsIsZero(t *testing.T) {
+	t.Parallel()
+
+	item := `{"kind":"llm.provider","id":"openai","value":{"name":"openai"},"revision":1}`
+	ctx := context.Background()
+
+	t.Run("list response", func(t *testing.T) {
+		t.Parallel()
+
+		c := newFixedEnvelopeClient(t, http.MethodGet, "/api/config/resources/llm.provider", "["+item+"]")
+		list, err := c.List(ctx, configresource.KindLLMProvider)
+		if err != nil {
+			t.Fatalf("list failed: %v", err)
+		}
+		if len(list) != 1 {
+			t.Fatalf("expected 1 resource, got %d", len(list))
+		}
+		if !list[0].CreatedAt.IsZero() || !list[0].UpdatedAt.IsZero() {
+			t.Errorf("expected zero timestamps, got createdAt=%s updatedAt=%s",
+				list[0].CreatedAt, list[0].UpdatedAt)
+		}
+	})
+
+	t.Run("single-resource response", func(t *testing.T) {
+		t.Parallel()
+
+		c := newFixedEnvelopeClient(t, http.MethodPut, "/api/config/resources/llm.provider/openai", item)
+		res, err := c.Update(ctx, configresource.KindLLMProvider, "openai", []byte(`{"name":"openai"}`))
+		if err != nil {
+			t.Fatalf("update failed: %v", err)
+		}
+		if !res.CreatedAt.IsZero() || !res.UpdatedAt.IsZero() {
+			t.Errorf("expected zero timestamps, got createdAt=%s updatedAt=%s", res.CreatedAt, res.UpdatedAt)
+		}
+	})
+}
 
 func TestCreateUsesCollectionPath(t *testing.T) {
 	t.Parallel()

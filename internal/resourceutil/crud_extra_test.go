@@ -749,3 +749,47 @@ func TestInvalidErrorMapsNamedAttribute(t *testing.T) {
 		})
 	}
 }
+
+// TestConflictWithoutIDKeepsServerMessage covers the server-generated-id path
+// (llm.apiKey): a create conflict has no id to name, but the gateway message
+// must still reach the diagnostic.
+func TestConflictWithoutIDKeepsServerMessage(t *testing.T) {
+	const message = "DB-backed API keys require llm.policies.apiKey"
+
+	r := resourceutil.CRUD(resourceutil.Spec{
+		TypeName: "agentgateway_llm_api_key",
+		Kind:     configresource.KindLLMAPIKey,
+		Schema:   apiKeyTestSchema(),
+		New:      func() resourceutil.KindResource { return &apiKeyTestModel{} },
+	})
+	configureResource(t, r, &errorClient{
+		err: &client.APIError{Status: 409, Message: message, Kind: client.ErrConflict},
+	}, "hybrid")
+
+	plan := tfsdk.Plan{
+		Raw: tftypes.NewValue(tftypes.Object{AttributeTypes: apiKeyTestAttrTypes()}, map[string]tftypes.Value{
+			"id":       tftypes.NewValue(tftypes.String, nil),
+			"revision": tftypes.NewValue(tftypes.Number, nil),
+			"key":      tftypes.NewValue(tftypes.String, "plaintext-key"),
+		}),
+		Schema: apiKeyTestSchema(),
+	}
+
+	var resp resource.CreateResponse
+	resp.State = emptyStateWith(t, apiKeyTestSchema(), apiKeyTestAttrTypes())
+	r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a conflict diagnostic")
+	}
+	detail := resp.Diagnostics.Errors()[0].Detail()
+	if !strings.Contains(detail, message) {
+		t.Errorf("expected the gateway message in the detail, got %q", detail)
+	}
+	if !strings.Contains(detail, "conflict detected") {
+		t.Errorf("expected the conflict hint in the detail, got %q", detail)
+	}
+	if strings.Contains(detail, "llm.apiKey/") {
+		t.Errorf("expected no id in the detail, got %q", detail)
+	}
+}
