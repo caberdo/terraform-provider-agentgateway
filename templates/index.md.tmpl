@@ -1,0 +1,48 @@
+---
+page_title: "agentgateway Provider"
+subcategory: ""
+description: |-
+  Terraform provider for the agentgateway standalone control plane: LLM providers, models, virtual models, API keys, MCP targets, traffic gateways, routes and policies managed through the config resource API.
+---
+
+# agentgateway Provider
+
+Terraform provider for the [agentgateway](https://agentgateway.dev/) standalone
+control plane. It manages LLM providers, models, virtual models, virtual API
+keys, MCP targets, traffic gateways, routes, TCP routes and policies by
+translating Terraform resources into writes on the agentgateway config resource
+API.
+
+Every read is a `GET` on the running gateway and every mutation is a `PUT` or
+`DELETE` on the same API. The provider owns no truth of its own: an attribute
+the server did not return is preserved from state rather than zeroed.
+
+## Requirements
+
+- Terraform 1.9 or later (plugin protocol 6.0).
+- agentgateway v1.7.0 or later. The acceptance suite runs against the versions
+  in [`.github/agentgateway-versions.txt`](https://github.com/caberdo/terraform-provider-agentgateway/blob/main/.github/agentgateway-versions.txt).
+
+## Quick start
+
+```terraform
+terraform {
+  required_providers {
+    agentgateway = {
+      source = "caberdo/agentgateway"
+    }
+  }
+}
+
+provider "agentgateway" {
+  endpoint = "http://127.0.0.1:15000"
+}
+```
+
+## Documentation
+
+- [Architecture](https://github.com/caberdo/terraform-provider-agentgateway/blob/main/ARCHITECTURE.md)
+- [Contributing](https://github.com/caberdo/terraform-provider-agentgateway/blob/main/CONTRIBUTING.md)
+- [Changelog](https://github.com/caberdo/terraform-provider-agentgateway/blob/main/CHANGELOG.md)
+
+{{ .SchemaMarkdown | trimspace }}

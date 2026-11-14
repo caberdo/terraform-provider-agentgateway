@@ -1,0 +1,7 @@
+# Supported agentgateway releases, ascending, one per line: the first line is
+# the declared floor, the rest is the rolling window. The acceptance workflow
+# and `make testacc-matrix` read this file as the single source of truth.
+#
+# v1.7.0 is the latest release, and also the floor: it is the first release
+# with the config resource API. Add the next release as a second line.
+v1.7.0
