@@ -138,7 +138,7 @@ func resourceSchema() schema.Schema {
 						"json": schema.StringAttribute{
 							Optional:            true,
 							CustomType:          jsontypes.NormalizedType{},
-							MarkdownDescription: "Any other backend as JSON (`aws`, `internal`, `routeGroup`). Exactly one backend variant may be set.",
+							MarkdownDescription: "Any other backend as JSON (`aws`, `internal`, `routeGroup`). Typed keys (`weight`, `host`, `backend`, `service`, `mcp`, `ai`, `dynamic`) are rejected inside `json`; set them as the sibling attributes. Exactly one backend variant may be set.",
 							Validators: []validator.String{
 								stringvalidator.ExactlyOneOf(backendOptions...),
 							},
