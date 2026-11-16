@@ -91,6 +91,9 @@ services:
       - go-modules:/go/pkg/mod
     environment:
       TF_ACC: "1"
+      # The binary installed above; without it the library falls back to the
+      # checkpoint API.
+      TF_ACC_TERRAFORM_PATH: "/usr/local/bin/terraform"
       AGENTGATEWAY_ENDPOINT: "http://hybrid:15000"
       AGENTGATEWAY_ENDPOINT_READONLY: "http://readonly:15001"
       AGENTGATEWAY_ENDPOINT_FILEOWNED: "http://fileowned:15002"
@@ -103,6 +106,23 @@ services:
       - -c
       - |
         set -euo pipefail
+        # terraform-plugin-testing installs Terraform through the checkpoint API
+        # when it cannot find a binary, and that endpoint intermittently answers
+        # 502 or resets the connection -- an environmental failure that reddens
+        # CI and hides real ones. Install a pinned release from the CDN instead
+        # and point the library at it (TF_ACC_TERRAFORM_PATH below). Skipped
+        # when the image already ships a terraform binary.
+        if ! command -v terraform >/dev/null 2>&1; then
+          terraform_version="1.11.4"
+          # The release filenames are linux_amd64 and linux_arm64, and an amd64
+          # binary cannot execute on the arm64 images Apple Silicon runs.
+          terraform_arch="$$(dpkg --print-architecture)"
+          (apt-get update -qq && apt-get install -y -qq unzip curl) >/dev/null
+          curl -fsSL --retry 3 --retry-delay 2 -o /tmp/terraform.zip \
+            "https://releases.hashicorp.com/terraform/$${terraform_version}/terraform_$${terraform_version}_linux_$${terraform_arch}.zip"
+          unzip -oq /tmp/terraform.zip -d /usr/local/bin
+          rm -f /tmp/terraform.zip
+        fi
         # Compose starts the gateways but does not wait for the admin API to
         # listen, so wait for it before the suite runs.
         for endpoint in hybrid:15000 readonly:15001 fileowned:15002 filemode:15003; do
