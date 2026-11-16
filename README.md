@@ -1,7 +1,9 @@
 # Terraform Provider for agentgateway
 
 [![CI](https://img.shields.io/github/actions/workflow/status/caberdo/terraform-provider-agentgateway/test.yml?branch=main&label=CI)](https://github.com/caberdo/terraform-provider-agentgateway/actions/workflows/test.yml)
-[![Coverage](https://img.shields.io/badge/coverage%20floor-80%25-green)](#testing-and-coverage)
+<!-- coverage-badge:start -->
+[![Coverage floor](https://img.shields.io/badge/coverage%20floor-80%25-green)](#testing-and-coverage)
+<!-- coverage-badge:end -->
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/caberdo/terraform-provider-agentgateway/badge)](https://scorecard.dev/viewer/?uri=github.com/caberdo/terraform-provider-agentgateway)
 [![Release](https://img.shields.io/github/v/release/caberdo/terraform-provider-agentgateway?label=release)](https://github.com/caberdo/terraform-provider-agentgateway/releases)
 [![Terraform Registry](https://img.shields.io/badge/registry-caberdo%2Fagentgateway-7b42bc)](https://registry.terraform.io/providers/caberdo/agentgateway)
@@ -15,9 +17,6 @@ provider translates Terraform resources into writes on the gateway's config reso
 (`/api/config/resources`) and manages LLM providers, models, virtual models, virtual API keys, MCP
 targets, traffic gateways, routes, TCP routes and policies. Every read is a `GET` on the running
 gateway; the provider owns no truth of its own.
-
-The current release is **v0.1.0**: the full v1 surface is implemented, every resource supports
-`terraform import`, and the generated reference lives in [`docs/`](docs/).
 
 **15 resources and 9 data sources.**
 
@@ -75,6 +74,9 @@ the version reported by `git describe`, or point a `dev_overrides` block in `~/.
 
 [`examples/complete`](./examples/complete) is a working module that manages one of each integration
 surface against a local gateway, in dependency order.
+
+The current release is **v0.1.0**: the full v1 surface is implemented, every resource supports
+`terraform import`, and the generated reference lives in [`docs/`](docs/).
 
 ## Requirements and compatibility
 
@@ -304,8 +306,6 @@ field, and the file-mode singleton rejection needs a gateway in `config.storage.
 green run.
 
 <!-- coverage:start -->
-![Coverage floor](https://img.shields.io/badge/coverage%20floor-80%25-green)
-
 The coverage gate fails below **80%** (`make coverage-gate`).
 <!-- coverage:end -->
 
@@ -349,8 +349,7 @@ The gateway's `config.yaml` owns that field. Change it in the file and restart t
 provider will not overwrite it.
 
 **An API key created outside Terraform cannot be imported.**
-A `file`-mode gateway may assign positional ids to API keys, so keys created outside Terraform
-cannot always be imported. Keys Terraform created are always readable.
+See [the `file`-mode id caveat](#limitations). Keys Terraform created are always readable.
 
 **The gateway is older than v1.7.0.**
 The provider warns and continues; it never fails on a failed version probe. Upgrade the gateway to
