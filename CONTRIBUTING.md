@@ -178,7 +178,7 @@ Both subcommands take the comma-separated list `protection-drift.yml` passes to
 the workflows use:
 
 ```sh
-go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.6.0 \
+go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.7.0 \
   branch-protection check --contexts 'ci / Lint & Security,ci / Test'
 ```
 
