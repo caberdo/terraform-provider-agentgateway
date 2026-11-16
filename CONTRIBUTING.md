@@ -219,18 +219,18 @@ the kit and is installed here by re-running the setup command.
 
 ## Releasing
 
-A release is a pull request that moves `VERSION`, cuts the `CHANGELOG.md`
-`Unreleased` section and updates the README install constraint. Merging it
-starts the `Create Release Tag` workflow, which signs the tag and publishes it
-with GoReleaser in the same run; a merge that leaves `VERSION` alone never
-releases. A signed tag pushed from a maintainer machine is published by the
-`Release` workflow instead.
+A release is a signed `v*` tag cut after the release pull request merges: the
+newest `CHANGELOG.md` section names the version, and there is no `VERSION` file.
+The release pull request assembles the `CHANGELOG.md` `Unreleased` section from
+the `changelog.d/` fragments and updates the README install constraint when
+the minor line moves. Merging it publishes nothing; pushing the signed tag is
+what starts the `Release` workflow, which publishes it with GoReleaser.
 
-The manual `Create Release Tag` dispatch remains for the cases the merge cannot
-cover, and `Release` with an existing tag republishes a failed one. The full
-path, including verification and recovery, is in
-[`contributing/releasing.md`](contributing/releasing.md). Do not re-run
-`Create Release Tag` to recover a failed publish.
+Tag creation is a maintainer step (`git tag -s vX.Y.Z`, then push), so there is
+no dispatch that invents a version. `Release` with an existing tag republishes a
+failed one. The full path, including verification and recovery, is in
+[`contributing/releasing.md`](contributing/releasing.md). Do not delete or move
+a tag to recover a failed publish.
 
 ## Commits
 
