@@ -1,8 +1,9 @@
 # Publishing a tag is delegated to the reusable release workflow in
 # caberdo/terraform-provider-kit.
 #
-# The released version is the last git tag; this repository does not carry a
-# version file. Three entry points remain:
+# A release is a signed tag cut after the release pull request merges; the
+# newest CHANGELOG.md section names the version, and this repository does not
+# carry a version file. Three entry points remain:
 #
 # - A `workflow_call` from another workflow in this repository or downstream,
 #   carrying the tag to publish.
@@ -36,7 +37,7 @@ permissions:
 
 jobs:
   release:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.12.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.13.0
     # `contents: write` uploads the release; `id-token: write` mints the OIDC
     # identity `actions/attest` signs the provenance with; `attestations: write`
     # stores that provenance in the repository's attestation record. Nothing
