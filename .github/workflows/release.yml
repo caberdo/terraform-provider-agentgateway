@@ -1,8 +1,13 @@
 # Publishing an existing tag is delegated to the reusable release workflow in
 # caberdo/terraform-provider-kit.
 #
-# Two entry points remain:
+# Three entry points remain:
 #
+# - A `workflow_call` from another workflow in this repository or downstream,
+#   carrying the tag to publish. It is kept as the reusable entry point even
+#   though `create-release-tag.yml` now calls the kit directly: the kit owns the
+#   tag and the publish in one call, so routing that path through this file
+#   would publish twice.
 # - A `push` of a signed `v*` tag from a developer machine. GitHub does not
 #   cascade workflows from a tag pushed with the default GITHUB_TOKEN, so the
 #   merge path is `create-release-tag.yml`; this trigger exists for tags pushed
@@ -10,13 +15,15 @@
 # - A `workflow_dispatch` naming an existing tag to publish or republish. The
 #   kit runs GoReleaser with `release.mode: replace`, so republishing is
 #   idempotent and the signed tag is untouched.
-#
-# The old `workflow_call` trigger is gone: `create-release-tag.yml` now calls
-# the kit directly, because the kit's release workflow owns the tag and the
-# publish in one call and calling this file as well would publish twice.
 name: Release
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -45,7 +52,8 @@ jobs:
     with:
       provider: agentgateway
       dist-prefix: terraform-provider-agentgateway
-      # A `tag` push is detected from the ref and a dispatch carries the tag it
-      # should publish, so this caller never creates one. The tag job is a
-      # no-op on both paths and GoReleaser publishes the named tag.
-      tag: ${{ github.event.inputs.tag }}
+      # A `tag` push is detected from the ref, a dispatch carries the tag it
+      # should publish, and a reusable call passes it as an input. This caller
+      # never creates a tag: the tag job is a no-op on every one of those paths
+      # and GoReleaser publishes the named tag.
+      tag: ${{ inputs.tag }}

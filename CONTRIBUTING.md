@@ -111,12 +111,13 @@ the current `coverage.out`.
 
 ## Dependency vulnerabilities
 
-`Lint & Security` runs `govulncheck ./...` through `scripts/govulncheck.sh`.
+`ci / Lint & Security` runs `govulncheck ./...` through `scripts/govulncheck.sh`.
 Only findings that affect called code fail the job; module-level findings the
 provider does not call are reported by the tool and do not block.
 
-- The tool version is pinned in `.github/workflows/test.yml`
-  (`golang.org/x/vuln/cmd/govulncheck@v1.9.0`); bump it deliberately together
+- The tool version is pinned in the kit's `.github/workflows/provider-ci.yml`
+  (`golang.org/x/vuln/cmd/govulncheck@v1.9.0`), which
+  `.github/workflows/test.yml` calls at v0.7.0; bump it deliberately together
   with the `go` directive it was tested against.
 - `golangci-lint` and `gosec` are pinned and built with the job's Go toolchain
   (`install-mode: goinstall` and `go run …@version`). Released binaries are
@@ -143,8 +144,9 @@ provider does not call are reported by the tool and do not block.
 it directly: every change goes through a branch and a pull request. The ruleset
 requires:
 
-- `Lint & Security` and `Test` to pass. These are the job `name:` values in
-  `.github/workflows/test.yml`, not the job keys.
+- `ci / Lint & Security` and `ci / Test` to pass. These are the caller job id
+  (`ci`) plus the called job's `name:` from `.github/workflows/test.yml`, not
+  the job keys.
 - A linear history (squash merges only) and no force-pushes or branch
   deletion.
 - All review threads resolved.
@@ -182,9 +184,9 @@ go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.7.0 \
   branch-protection check --contexts 'ci / Lint & Security,ci / Test'
 ```
 
-With no `--contexts` tfkit falls back to `Lint & Security,Test`, which is not a
-job name here: `check` reports that as drift, and `setup` refuses it before it
-writes anything.
+With no `--contexts` tfkit falls back to the kit's pre-migration default names,
+which are not job names here: `check` reports that as drift, and `setup` refuses
+it before it writes anything.
 
 Never require a job that has an `if:` condition or a matrix context. Such a
 check is skipped on some PRs and sits at "Expected — Waiting for status to be
@@ -219,8 +221,10 @@ the kit and is installed here by re-running the setup command.
 
 A release is a pull request that moves `VERSION`, cuts the `CHANGELOG.md`
 `Unreleased` section and updates the README install constraint. Merging it
-starts the `Create Release Tag` workflow, which signs the tag and calls
-`Release`; a merge that leaves `VERSION` alone never releases.
+starts the `Create Release Tag` workflow, which signs the tag and publishes it
+with GoReleaser in the same run; a merge that leaves `VERSION` alone never
+releases. A signed tag pushed from a maintainer machine is published by the
+`Release` workflow instead.
 
 The manual `Create Release Tag` dispatch remains for the cases the merge cannot
 cover, and `Release` with an existing tag republishes a failed one. The full

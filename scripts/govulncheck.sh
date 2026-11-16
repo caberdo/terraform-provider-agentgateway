@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail when a dependency vulnerability affects code this provider actually
-# calls. Wraps `govulncheck` (pinned in .github/workflows/test.yml) and reads
+# calls. Wraps `govulncheck` (pinned in the kit's provider-ci.yml) and reads
 # accepted findings from .github/govulncheck-accepted.txt.
 #
 # govulncheck already distinguishes findings the code calls from findings in
@@ -26,7 +26,7 @@ die() {
   exit 2
 }
 
-command -v "$tool" >/dev/null || die "'$tool' not found; install the pinned version from .github/workflows/test.yml"
+command -v "$tool" >/dev/null || die "'$tool' not found; install the pinned version from the kit's provider-ci.yml"
 [[ -f "$accepted" ]] || die "accepted findings file '$accepted' not found"
 command -v jq >/dev/null || die "'jq' not found; it is required to parse govulncheck output"
 

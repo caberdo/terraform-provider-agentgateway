@@ -36,7 +36,7 @@ jobs:
       expect-version-env: AGENTGATEWAY_EXPECT_VERSION
       # One compose project per version so matrices cannot share containers,
       # volumes or port bindings. agentgateway versions carry dots, which the
-      # kit rewrites to dashes (`agentgateway-acc-1-7-0`).
+      # kit rewrites to dashes while keeping the `v` (`agentgateway-acc-v1-7-0`).
       compose-project-prefix: agentgateway
       compose-dot-to-dash: true
       # Two gateways at a time keeps memory bounded on the standard runner

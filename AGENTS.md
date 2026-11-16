@@ -68,8 +68,8 @@ with the code they cover.
 | `make build` | build `bin/terraform-provider-agentgateway` |
 | `make test` | unit tests |
 | `make coverage` | unit coverage profile and summary |
-| `make lint` | golangci-lint (config at `.golangci.yml`); gofmt is gated in CI by `gofmt-check` |
-| `make fmt` | gofmt the tree |
+| `make lint` | golangci-lint (config at `.golangci.yml`) and the gofmt gate |
+| `make fmt` / `make fmt-check` | gofmt the tree / fail when a tracked file is not gofmt-formatted |
 | `make vet` | `go vet ./...` |
 | `make validate-examples` | `terraform fmt`/`validate` every example |
 | `make generate` | regenerate `docs/` with `tfplugindocs` |
