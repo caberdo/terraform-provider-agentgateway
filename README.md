@@ -371,4 +371,5 @@ No — it has no authentication by default. Treat network isolation as the prima
 
 ## License
 
-Mozilla Public License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+MIT — see the [LICENSE](LICENSE) file, and [`NOTICE`](./NOTICE) for the upstream
+works this project derives from and the licence carve-outs that apply to them.

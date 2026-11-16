@@ -85,9 +85,9 @@ with the code they cover.
   generated docs. Lane work stays inside its owned paths.
 - Always pin the latest stable Go release in `go.mod` (currently `go 1.27.4`);
   bump it as part of the change that needs it.
-- License is MPL-2.0 (`LICENSE`); third-party derivations are recorded in
-  `NOTICE`. Do not copy source from an Apache-2.0 or AGPL project without adding
-  it there.
+- License is MIT (`LICENSE`); third-party derivations and the material the MIT
+  licence does not cover are recorded in `NOTICE`. Do not copy source from an
+  Apache-2.0 or AGPL project without adding it there.
 - No new third-party dependency without the lead's approval.
 - No `panic`, `log.Fatal` or `os.Exit` outside `main`.
 - No secret in a diagnostic, log field, test failure message or committed file.
