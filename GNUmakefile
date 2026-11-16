@@ -15,7 +15,7 @@ AGENTGATEWAY_VERSIONS ?= $(shell sed -e 's/\#.*//' .github/agentgateway-versions
 # README targets, example validation and the release-metadata check. Keep this
 # pin equal to the `uses:` refs in .github/workflows/*.yml: one version for the
 # local targets and the reusable workflows, so they cannot drift apart.
-TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.7.0
+TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.8.0
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
@@ -64,6 +64,10 @@ testacc-docker:
 # Run the docker-based acceptance suite against every supported agentgateway
 # version. Each version runs and tears down independently so one failure still
 # lets the others run; the overall exit status is non-zero if any version failed.
+#
+# The project name rewrites dots to dashes: Compose rejects them in a project
+# name, and the kit's acceptance workflow builds the same name the same way, so
+# local and CI matrices stay tellable apart as `agentgateway-acc-v1-7-0`.
 testacc-matrix:
 	@test -n "$(AGENTGATEWAY_VERSIONS)" || { \
 		echo "AGENTGATEWAY_VERSIONS is empty; check .github/agentgateway-versions.txt" >&2; \
@@ -71,14 +75,15 @@ testacc-matrix:
 	}
 	@results=$$(mktemp); status=0; \
 	for v in $(AGENTGATEWAY_VERSIONS); do \
+		project="agentgateway-acc-$$(echo "$$v" | tr . -)"; \
 		echo "==> Acceptance tests against agentgateway $$v"; \
-		if COMPOSE_PROJECT_NAME=agentgateway-acc-$$v AGENTGATEWAY_EXPECT_VERSION=$$v \
+		if COMPOSE_PROJECT_NAME=$$project AGENTGATEWAY_EXPECT_VERSION=$$v \
 			$(MAKE) --no-print-directory testacc-docker AGENTGATEWAY_VERSION=$$v; then \
 			echo "PASS agentgateway $$v" >> "$$results"; \
 		else \
 			echo "FAIL agentgateway $$v" >> "$$results"; status=1; \
 		fi; \
-		COMPOSE_PROJECT_NAME=agentgateway-acc-$$v $(COMPOSE) down -v >/dev/null 2>&1 || true; \
+		COMPOSE_PROJECT_NAME=$$project $(COMPOSE) down -v >/dev/null 2>&1 || true; \
 	done; \
 	echo; echo "==> Acceptance matrix summary"; cat "$$results"; rm -f "$$results"; \
 	exit $$status

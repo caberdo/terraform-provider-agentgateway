@@ -117,7 +117,7 @@ provider does not call are reported by the tool and do not block.
 
 - The tool version is pinned in the kit's `.github/workflows/provider-ci.yml`
   (`golang.org/x/vuln/cmd/govulncheck@v1.9.0`), which
-  `.github/workflows/test.yml` calls at v0.7.0; bump it deliberately together
+  `.github/workflows/test.yml` calls at v0.8.0; bump it deliberately together
   with the `go` directive it was tested against.
 - `golangci-lint` and `gosec` are pinned and built with the job's Go toolchain
   (`install-mode: goinstall` and `go run …@version`). Released binaries are
@@ -180,7 +180,7 @@ Both subcommands take the comma-separated list `protection-drift.yml` passes to
 the workflows use:
 
 ```sh
-go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.7.0 \
+go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.8.0 \
   branch-protection check --contexts 'ci / Lint & Security,ci / Test'
 ```
 

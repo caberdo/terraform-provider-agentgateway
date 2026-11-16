@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.7.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.8.0
     # GitHub validates a caller's grant against every job of the called workflow
     # before any `if:` or input is evaluated, so these are the union of what
     # provider-ci declares, not what this run happens to execute:
@@ -57,9 +57,9 @@ jobs:
       # `./scripts/govulncheck.sh` and its accepted-findings list. The default
       # (`action`) would move it into a separate Vulnerability Scan job.
       govuln-mode: script
-      # gofmt is not one of golangci-lint's default linters. This is the same
-      # gate the deleted `make fmt-check` target ran; keeping it here leaves one
-      # implementation instead of a local target and a CI step that can drift.
+      # gofmt is not one of golangci-lint's default linters, so CI runs the kit's
+      # formatter check on top of golangci-lint. The local `make fmt-check` target
+      # mirrors that check; both exist on purpose, and both must agree.
       gofmt-check: true
       # The generated docs must not drift; `docs-mode: none` keeps the check in
       # the Test job, where it lives today.
