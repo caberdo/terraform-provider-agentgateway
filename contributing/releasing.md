@@ -2,9 +2,11 @@
 
 This is the maintainer runbook for shipping a release. A release is a pull
 request that moves `VERSION` and cuts the changelog; merging it starts the
-`Create Release Tag` workflow, which signs the tag, and the `Release` workflow,
-which publishes with GoReleaser. This runbook covers that path end to end, plus
-the manual dispatch and recovery steps for the cases a merge cannot cover.
+`Create Release Tag` workflow, which signs the tag and publishes it with
+GoReleaser in the same run. A signed tag pushed from a maintainer machine is
+published by the `Release` workflow instead. This runbook covers that path end
+to end, plus the manual dispatch and recovery steps for the cases a merge
+cannot cover.
 
 The example version in every command is `0.1.1`. Substitute the version you are
 shipping; the tag always carries a `v` prefix. Run the commands from a clone of
@@ -141,12 +143,13 @@ In order, the workflow:
 5. imports `GPG_PRIVATE_KEY`/`PASSPHRASE` and creates an annotated, signed tag
    with the key's identity,
 6. pushes the tag,
-7. calls the `Release` workflow with that tag.
+7. builds, signs the checksum file, attests provenance, generates the SBOM and
+   replaces the GitHub release assets.
 
-Step 7 is explicit because a tag pushed with the default `GITHUB_TOKEN` does not
-trigger other workflows: the `push: tags: v*` trigger in `release.yml` will not
-fire for this push. `Release` builds the provider, signs the checksum file,
-attests provenance, generates the SBOM and replaces the GitHub release assets.
+Step 7 runs in the same workflow because a tag pushed with the default
+`GITHUB_TOKEN` does not trigger other workflows: the `push: tags: v*` trigger in
+`release.yml` will not fire for this push. `release.yml` remains the entry point
+for tags pushed from a maintainer machine and for republishing an existing tag.
 
 Watch the run:
 
