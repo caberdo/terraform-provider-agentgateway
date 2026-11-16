@@ -1,3 +1,9 @@
+# CI is delegated to the reusable workflows in caberdo/terraform-provider-kit.
+#
+# The triggers, the concurrency group and the token scopes stay here: a
+# `workflow_call` file cannot declare triggers, and a called workflow can only
+# narrow the token its caller grants. Everything else — the job steps, the
+# versions-matrix parser, the coverage gate — lives in the kit.
 name: Test
 
 on:
@@ -15,179 +21,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint & Security
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  ci:
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-ci.yml@v0.6.0
+    # GitHub validates a caller's grant against every job of the called workflow
+    # before any `if:` or input is evaluated, so these are the union of what
+    # provider-ci declares, not what this run happens to execute:
+    #
+    # - `contents: write` + `pull-requests: write`: requested unconditionally by
+    #   the called `docs` job. Omitting them rejects the whole run with "The
+    #   nested job 'docs' is requesting 'contents: write, pull-requests: write'"
+    #   — even though `docs-mode: none` means that job only explains itself.
+    # - `security-events: write`: the `Lint & Security` job uploads gosec SARIF
+    #   to code scanning.
+    #
+    # This does not widen the token any other job runs with: every other job in
+    # provider-ci.yml re-declares `contents: read` (and nothing else), and a
+    # called job can narrow the caller's grant, never widen it.
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       security-events: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      # gofmt is not one of golangci-lint's default linters, so a formatting
-      # slip would otherwise only show up in review. Gate it before the linter.
-      - name: Check gofmt
-        run: |
-          unformatted=$(gofmt -l $(git ls-files '*.go'))
-          if [ -n "$unformatted" ]; then
-            echo "gofmt would reformat these files:" >&2
-            echo "$unformatted" >&2
-            echo "run 'gofmt -w' on them (or 'make fmt')" >&2
-            exit 1
-          fi
-
-      # Build the linter with the toolchain in go.mod instead of downloading the
-      # prebuilt binary. Released binaries are built with an older Go (v2.15.0
-      # ships go1.27.0), which cannot read Go 1.27.4 export data: the lint run
-      # fails with "export data version 5 is greater than maximum supported
-      # version 4". goinstall mode compiles v2.15.0 with the same Go as the
-      # module, so the two stay in step.
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.15.0
-          install-mode: goinstall
-          args: --config .golangci.yml
-
-      # Dependency vulnerabilities are invisible to gosec and CodeQL, which
-      # only read first-party code. The version is pinned here (no @latest) and
-      # documented in CONTRIBUTING.md; update it deliberately, with the go.mod
-      # toolchain it was tested against.
-      - name: Install govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      # scripts/govulncheck.sh fails only on findings that affect called code
-      # and reads accepted findings from .github/govulncheck-accepted.txt.
-      - name: Run govulncheck
-        run: ./scripts/govulncheck.sh
-
-      # Run gosec with the job's Go toolchain for the same reason as the linter:
-      # the pinned action image is built with an older Go (v2.30.0 ships a
-      # toolchain that cannot read Go 1.27.4 export data) and fails with
-      # "package main has type errors, skipping SSA analysis". Pinning the
-      # module version keeps the scanner reproducible without the image.
-      - name: Run Gosec Security Scanner
-        id: gosec
-        continue-on-error: true
-        run: |
-          go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 \
-            -fmt sarif -out gosec.sarif -exclude-dir=vendor -tests=false ./
-
-      - name: Upload security scan results
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
-        if: always() && hashFiles('gosec.sarif') != ''
-        with:
-          sarif_file: gosec.sarif
-
-      - name: Fail on Gosec findings
-        if: always() && steps.gosec.outcome == 'failure'
-        run: |
-          {
-            echo "## Gosec Security Scanner Found Issues"
-            echo ""
-            if [ -f gosec.sarif ]; then
-              echo "| Rule | File | Line | Description |"
-              echo "|------|------|------|-------------|"
-              jq -r '.runs[0].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.locations[0].physicalLocation.region.startLine) | \(.message.text) |"' gosec.sarif
-            fi
-            echo ""
-            echo "See the **Security** tab for full details."
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: lint
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      - name: Build and vet
-        run: |
-          go build ./...
-          go vet ./...
-
-      - name: Verify go.mod is tidy and module hashes match
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-          go mod verify
-
-      - name: Cross-platform build
-        run: |
-          GOOS=windows GOARCH=amd64 go build ./...
-          GOOS=darwin GOARCH=arm64 go build ./...
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: "~> 1.9"
-          terraform_wrapper: false
-
-      - name: Validate examples
-        env:
-          REQUIRE_TERRAFORM: "1"
-        run: ./scripts/validate-examples.sh
-
-      # A release pull request is the only change that moves VERSION. Catch a
-      # mismatch with CHANGELOG.md or the README install constraint here instead
-      # of after the merge, where it would fail the tag workflow on main.
-      - name: Check release metadata
-        run: ./scripts/release-check.sh
-
-      - name: Check generated docs are up to date
-        run: |
-          go generate ./...
-          git diff --exit-code -- docs/
-
-      - name: Run tests
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./internal/...
-
-      - name: Coverage summary
-        if: always()
-        run: |
-          if [[ ! -f coverage.out ]]; then
-            echo "No coverage profile: the test step failed before writing one." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          {
-            echo "## Coverage"
-            echo ""
-            echo "Unit tests only: acceptance tests require \`TF_ACC\` and a live agentgateway."
-            echo ""
-            ./scripts/coverage-summary.sh coverage.out
-          } >> "$GITHUB_STEP_SUMMARY"
-          ./scripts/coverage-summary.sh coverage.out
-
-      # Enforce the coverage floor on every pull request: the `Test` job is a
-      # required context, so a regression below .github/coverage-baseline.txt
-      # fails the PR instead of only surfacing on main/merge-queue.
-      - name: Coverage gate (unit)
-        if: always()
-        run: ./scripts/coverage-gate.sh coverage.out
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage
-          path: coverage.out
-          if-no-files-found: ignore
+    with:
+      provider: agentgateway
+      provider-display: agentgateway
+      module: github.com/caberdo/terraform-provider-agentgateway
+      packages: ./internal/...
+      # The matrix source of truth, named here so it cannot drift from the
+      # acceptance call. agentgateway has no versions job (`versions-job` stays
+      # at its `false` default), so nothing reads it in this caller yet.
+      versions-file: .github/agentgateway-versions.txt
+      # A release pull request is the only change that moves VERSION: the
+      # changelog check catches a mismatch before the merge instead of after it.
+      changelog: true
+      # Dependency scanning stays in the Lint & Security job, through
+      # `./scripts/govulncheck.sh` and its accepted-findings list. The default
+      # (`action`) would move it into a separate Vulnerability Scan job.
+      govuln-mode: script
+      # gofmt is not one of golangci-lint's default linters. This is the same
+      # gate the deleted `make fmt-check` target ran; keeping it here leaves one
+      # implementation instead of a local target and a CI step that can drift.
+      gofmt-check: true
+      # The generated docs must not drift; `docs-mode: none` keeps the check in
+      # the Test job, where it lives today.
+      docs: true
+      # Re-check the coverage sentence in README.md from the Test job. Its
+      # `make coverage-gate` wording is tfkit's default, so the check needs no
+      # flag and guards the one line the kit migration changed.
+      coverage-readme-in-test: true
+      # Keeps the Coverage section of the job summary byte-identical.
+      coverage-note: "Unit tests only: acceptance tests require `TF_ACC` and a live agentgateway."

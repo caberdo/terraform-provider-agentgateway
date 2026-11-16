@@ -1,8 +1,12 @@
+# The acceptance suite is delegated to the reusable acceptance workflow in
+# caberdo/terraform-provider-kit.
+#
+# The triggers stay here. It remains a separate workflow from `test.yml` so the
+# unit suite stays fast and the acceptance matrix can be tuned (timeouts,
+# parallelism) on its own. The matrix parser keeps the existing selection: pull
+# requests run the floor plus the newest release, main and the merge queue run
+# the whole window from .github/agentgateway-versions.txt.
 name: Acceptance
-
-# The acceptance suite runs against a real agentgateway in Docker. It is a
-# separate workflow from `test.yml` so the unit suite stays fast and the
-# acceptance matrix can be tuned (timeouts, parallelism) on its own.
 
 on:
   push:
@@ -19,128 +23,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prepare:
-    name: Prepare agentgateway Matrix
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      versions: ${{ steps.read.outputs.versions }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The file is the single source of truth and is ordered ascending: the
-      # first line is the declared floor, the rest is the rolling window.
-      # Pull requests get the floor plus the newest release (fast signal);
-      # main and the merge queue get the whole window.
-      - name: Read the supported versions into a JSON array
-        id: read
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          mapfile -t all < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' .github/agentgateway-versions.txt | grep -v '^$')
-          if [[ ${#all[@]} -eq 0 ]]; then
-            echo "no supported agentgateway version found in .github/agentgateway-versions.txt" >&2
-            exit 1
-          fi
-          floor="${all[0]}"
-          latest="${all[${#all[@]}-1]}"
-
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            versions=$(jq -c -n --arg floor "$floor" --arg latest "$latest" '[$floor, $latest] | unique')
-          else
-            versions=$(printf '%s\n' "${all[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          fi
-
-          echo "versions=$versions" >> "$GITHUB_OUTPUT"
-          echo "Matrix for $EVENT_NAME: $versions (floor $floor, latest $latest)"
-
   acceptance:
-    name: Acceptance Tests (agentgateway ${{ matrix.agentgateway }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs:
-      - prepare
-    strategy:
-      fail-fast: false
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.6.0
+    permissions:
+      contents: read
+    with:
+      provider: agentgateway
+      provider-display: agentgateway
+      packages: ./internal/...
+      versions-file: .github/agentgateway-versions.txt
+      version-env: AGENTGATEWAY_VERSION
+      expect-version-env: AGENTGATEWAY_EXPECT_VERSION
+      # One compose project per version so matrices cannot share containers,
+      # volumes or port bindings. agentgateway versions carry dots, which the
+      # kit rewrites to dashes (`agentgateway-acc-1-7-0`).
+      compose-project-prefix: agentgateway
+      compose-dot-to-dash: true
       # Two gateways at a time keeps memory bounded on the standard runner
       # while still letting the matrix finish in two waves.
       max-parallel: 2
-      matrix:
-        # Single source of truth: .github/agentgateway-versions.txt, also read by
-        # `make testacc-matrix`. Pull requests run the floor and the newest
-        # release; main and the merge queue run the whole window.
-        agentgateway: ${{ fromJSON(needs.prepare.outputs.versions) }}
-    env:
-      AGENTGATEWAY_VERSION: ${{ matrix.agentgateway }}
-      AGENTGATEWAY_EXPECT_VERSION: ${{ matrix.agentgateway }}
-      # One compose project per version so matrices cannot share containers,
-      # volumes or port bindings.
-      COMPOSE_PROJECT_NAME: agentgateway-acc-${{ replace(matrix.agentgateway, '.', '-') }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-          cache: true
-
-      # The acceptance container writes coverage-acceptance.out into the mounted
-      # worktree; the unit profile is produced here so both can be merged into
-      # the one statement-coverage number the project publishes.
-      - name: Unit-test coverage
-        run: go test -count=1 -skip '^TestAcc' -covermode=atomic -coverprofile=coverage.out ./internal/...
-
-      - name: Run acceptance tests
-        run: docker compose run --rm test
-
-      # Without this, a failed service exits with a bare "didn't complete
-      # successfully: exit 1" and the container's own output is lost with the
-      # runner. Dump before teardown removes the containers.
-      - name: Dump agentgateway logs on failure
-        if: failure()
-        run: docker compose logs --no-color > "agentgateway-${{ matrix.agentgateway }}.log" || true
-
-      - name: Upload agentgateway logs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: agentgateway-${{ matrix.agentgateway }}-logs
-          path: agentgateway-${{ matrix.agentgateway }}.log
-          if-no-files-found: ignore
-
-      - name: Tear down the acceptance environment
-        if: always()
-        run: docker compose down -v
-
-      - name: Combined coverage (unit + acceptance)
-        if: always()
-        run: |
-          if [[ ! -f coverage.out || ! -f coverage-acceptance.out ]]; then
-            echo "Incomplete coverage profiles: unit \`coverage.out\` and acceptance" >> "$GITHUB_STEP_SUMMARY"
-            echo "\`coverage-acceptance.out\` are both required; one is missing." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          ./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
-          {
-            echo "## Coverage (unit + acceptance)"
-            echo ""
-            echo "\`coverage.out\` and \`coverage-acceptance.out\` merged by \`scripts/merge-coverage.sh\`."
-            echo ""
-            ./scripts/coverage-summary.sh coverage-union.out
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Acceptance coverage is reported, not gated: it depends on Docker and a
-      # live gateway, so the enforced floor is the unit + protocol profile
-      # produced by the `Test` job (design §10).
-      - name: Upload combined coverage
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-acceptance-${{ matrix.agentgateway }}
-          path: |
-            coverage-acceptance.out
-            coverage-union.out
-          if-no-files-found: ignore
+      acceptance-timeout: 45

@@ -11,6 +11,11 @@ COMPOSE ?= docker compose
 # Supported versions, single-sourced with the CI matrix. Override for a quick
 # local check: AGENTGATEWAY_VERSIONS="v1.7.0 v1.6.0" make testacc-matrix
 AGENTGATEWAY_VERSIONS ?= $(shell sed -e 's/\#.*//' .github/agentgateway-versions.txt | tr '\n' ' ')
+# The shared tooling for the caberdo providers: the coverage gate, merge and
+# README targets, example validation and the release-metadata check. Keep this
+# pin equal to the `uses:` refs in .github/workflows/*.yml: one version for the
+# local targets and the reusable workflows, so they cannot drift apart.
+TFKIT ?= go run github.com/caberdo/terraform-provider-kit/cmd/tfkit@v0.6.0
 
 build:
 	go build -o bin/$(BINARY_NAME) -ldflags "-X main.version=$(VERSION)" .
@@ -23,7 +28,7 @@ test:
 coverage:
 	go test -count=1 -skip '^TestAcc' -covermode=atomic -coverprofile=coverage.out ./internal/...
 	@echo
-	@./scripts/coverage-summary.sh coverage.out
+	@go tool cover -func=coverage.out
 
 coverage-html: coverage
 	go tool cover -html=coverage.out
@@ -31,24 +36,24 @@ coverage-html: coverage
 # Unit coverage (coverage.out) plus the acceptance profile written by
 # docker-compose.yml (coverage-acceptance.out) as one number.
 coverage-merge:
-	./scripts/merge-coverage.sh coverage-union.out coverage.out coverage-acceptance.out
+	$(TFKIT) coverage merge --output coverage-union.out coverage.out coverage-acceptance.out
 	@echo
-	@./scripts/coverage-summary.sh coverage-union.out
+	@go tool cover -func=coverage-union.out
 
 # Regenerate the coverage badge and floor statement in README.md from
 # .github/coverage-baseline.txt; `make coverage-readme-check` fails when the
 # committed README has drifted from the baseline.
 coverage-readme:
-	./scripts/coverage-readme.sh
+	$(TFKIT) coverage readme
 
 coverage-readme-check:
-	./scripts/coverage-readme.sh --check
+	$(TFKIT) coverage readme --check
 
 # Fail when coverage.out (unit + protocol) is below the floor in
 # .github/coverage-baseline.txt. Acceptance coverage is reported separately and
 # is not gated: it depends on Docker being available (design §10).
 coverage-gate:
-	./scripts/coverage-gate.sh coverage.out
+	$(TFKIT) coverage gate --profile coverage.out
 
 testacc:
 	TF_ACC=1 go test -v -cover ./internal/...
@@ -79,19 +84,10 @@ testacc-matrix:
 	exit $$status
 
 # Fail when a tracked Go file is not gofmt-formatted. gofmt is not one of
-# golangci-lint's default linters, so it gets its own gate.
-fmt-check:
-	@files=$$(git ls-files '*.go'); \
-	if [ -z "$$files" ]; then exit 0; fi; \
-	unformatted=$$(gofmt -l $$files); \
-	if [ -n "$$unformatted" ]; then \
-		echo "gofmt would reformat these files:" >&2; \
-		echo "$$unformatted" >&2; \
-		echo "run 'gofmt -w' on them (or 'make fmt')" >&2; \
-		exit 1; \
-	fi
-
-lint: fmt-check
+# golangci-lint's default linters, so it gets its own gate in CI
+# (`gofmt-check: true` in provider-ci.yml). The local `fmt-check` target that
+# duplicated that step is gone; `make fmt` still rewrites the tree.
+lint:
 	golangci-lint run --config .golangci.yml ./...
 
 lint-fix:
@@ -108,7 +104,7 @@ install: build
 	cp bin/$(BINARY_NAME) ~/.terraform.d/plugins/registry.terraform.io/caberdo/agentgateway/$(VERSION)/$$(go env GOOS)_$$(go env GOARCH)/$(BINARY_NAME)
 
 validate-examples:
-	./scripts/validate-examples.sh
+	$(TFKIT) examples validate --provider agentgateway
 
 generate:
 	go generate ./...
@@ -117,6 +113,6 @@ generate:
 # The tag workflow enforces the same agreement on main; this keeps the failure
 # in the pull request instead of after the merge.
 release-check:
-	./scripts/release-check.sh
+	$(TFKIT) release check
 
-.PHONY: default build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check coverage-gate testacc testacc-docker testacc-matrix lint lint-fix fmt fmt-check vet install validate-examples generate release-check
+.PHONY: default build test coverage coverage-html coverage-merge coverage-readme coverage-readme-check coverage-gate testacc testacc-docker testacc-matrix lint lint-fix fmt vet install validate-examples generate release-check

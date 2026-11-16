@@ -68,8 +68,8 @@ with the code they cover.
 | `make build` | build `bin/terraform-provider-agentgateway` |
 | `make test` | unit tests |
 | `make coverage` | unit coverage profile and summary |
-| `make lint` | golangci-lint (config at `.golangci.yml`) |
-| `make fmt` / `make fmt-check` | gofmt the tree / fail when a tracked file is not gofmt-formatted |
+| `make lint` | golangci-lint (config at `.golangci.yml`); gofmt is gated in CI by `gofmt-check` |
+| `make fmt` | gofmt the tree |
 | `make vet` | `go vet ./...` |
 | `make validate-examples` | `terraform fmt`/`validate` every example |
 | `make generate` | regenerate `docs/` with `tfplugindocs` |
@@ -104,7 +104,7 @@ with the code they cover.
 - Coverage must be checked before claiming work is done, and it must never drop
   below the global floor in `.github/coverage-baseline.txt` or a package floor
   in `.github/coverage-floors.txt`. Run `make coverage` (and the acceptance
-  suite where relevant) and confirm `./scripts/coverage-gate.sh` passes before
+  suite where relevant) and confirm `make coverage-gate` passes before
   opening or merging a pull request; if a change adds uncovered code, add tests
   or lower the floor deliberately in the same change.
 
