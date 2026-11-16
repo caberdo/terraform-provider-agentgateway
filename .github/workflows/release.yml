@@ -1,17 +1,14 @@
-# Publishing an existing tag is delegated to the reusable release workflow in
+# Publishing a tag is delegated to the reusable release workflow in
 # caberdo/terraform-provider-kit.
 #
-# Three entry points remain:
+# The released version is the last git tag; this repository does not carry a
+# version file. Three entry points remain:
 #
 # - A `workflow_call` from another workflow in this repository or downstream,
-#   carrying the tag to publish. It is kept as the reusable entry point even
-#   though `create-release-tag.yml` now calls the kit directly: the kit owns the
-#   tag and the publish in one call, so routing that path through this file
-#   would publish twice.
-# - A `push` of a signed `v*` tag from a developer machine. GitHub does not
-#   cascade workflows from a tag pushed with the default GITHUB_TOKEN, so the
-#   merge path is `create-release-tag.yml`; this trigger exists for tags pushed
-#   by hand.
+#   carrying the tag to publish.
+# - A `push` of a signed `v*` tag from a developer machine. Cutting and pushing
+#   that tag is the release step: a merge to `main` is not a release, and with
+#   no version file no file change could identify one.
 # - A `workflow_dispatch` naming an existing tag to publish or republish. The
 #   kit runs GoReleaser with `release.mode: replace`, so republishing is
 #   idempotent and the signed tag is untouched.
@@ -39,7 +36,7 @@ permissions:
 
 jobs:
   release:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.10.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-release.yml@v0.12.0
     # `contents: write` uploads the release; `id-token: write` mints the OIDC
     # identity `actions/attest` signs the provenance with; `attestations: write`
     # stores that provenance in the repository's attestation record. Nothing
@@ -54,6 +51,6 @@ jobs:
       dist-prefix: terraform-provider-agentgateway
       # A `tag` push is detected from the ref, a dispatch carries the tag it
       # should publish, and a reusable call passes it as an input. This caller
-      # never creates a tag: the tag job is a no-op on every one of those paths
-      # and GoReleaser publishes the named tag.
+      # never creates a tag: the kit's tag job is skipped without a version
+      # file, and GoReleaser publishes the named tag.
       tag: ${{ inputs.tag }}

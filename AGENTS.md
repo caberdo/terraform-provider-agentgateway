@@ -77,7 +77,7 @@ with the code they cover.
 | `make testacc-matrix` | acceptance suite against every supported agentgateway version |
 | `make coverage-gate` | fail below the global floor in `.github/coverage-baseline.txt` or a package floor in `.github/coverage-floors.txt` |
 | `make coverage-readme-check` | fail when the README coverage badge drifts |
-| `make release-check` | fail when `VERSION`, `CHANGELOG.md` and the README disagree |
+| `make release-check` | fail when `CHANGELOG.md` and the README disagree with the last git tag |
 
 ## Rules
 
