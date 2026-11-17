@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   acceptance:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.13.0
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-acceptance.yml@v0.15.0
     permissions:
       contents: read
     with:
