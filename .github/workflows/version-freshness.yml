@@ -1,9 +1,14 @@
-# Compares the supported agentgateway matrix with the upstream release window
-# and opens (or updates) exactly one issue when the matrix lags. It never edits
-# the matrix itself: a human or an agent lands the bump pull request.
+# Monitors the agentgateway maintenance window: compares the supported matrix
+# with the upstream releases, canaries the newest release the matrix does not
+# cover, and checks this repository's kit pin. Each job reports at most one
+# labelled issue and closes it when the finding goes away. The workflow never
+# edits the matrix or the pin: the bump stays a decision.
 #
-# The comparison is the reusable workflow in caberdo/terraform-provider-kit.
-name: Version matrix freshness
+# The canary is meant to run weekly, but one caller cannot bind two cron
+# schedules to different jobs, and a second workflow file is deliberately out
+# of scope here. It therefore runs on this monthly schedule for now; split it
+# out (or gate the jobs on `github.event.schedule`) when weekly matters.
+name: Version maintenance
 
 on:
   schedule:
@@ -14,6 +19,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}
@@ -21,15 +27,22 @@ concurrency:
 
 jobs:
   freshness:
-    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.13.0
-    # `issues: write` opens or updates the single stale-matrix issue.
+    uses: caberdo/terraform-provider-kit/.github/workflows/provider-freshness.yml@v0.14.0
+    # `issues: write` opens or updates one labelled issue per category;
+    # `actions: read` lets the canary report read the failing job's log.
     permissions:
       contents: read
       issues: write
+      actions: read
     with:
       provider-display: agentgateway
       versions-file: .github/agentgateway-versions.txt
       upstream: agentgateway/agentgateway
-      # Upstream tags and the matrix both carry the `v` prefix, so nothing is
-      # stripped before the comparison.
+      # Upstream stable releases are tagged `v1.7.0` and the matrix holds the
+      # same `v`-prefixed form, so neither side is normalised. Prereleases
+      # (`v1.7.0-rc.1`, `v1.7.0-alpha.1`) are filtered before the comparison.
       strip-v: false
+      canary: true
+      version-env: AGENTGATEWAY_VERSION
+      expect-version-env: AGENTGATEWAY_EXPECT_VERSION
+      kit-check: true
