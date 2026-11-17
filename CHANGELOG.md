@@ -6,7 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-LICENSE:
+## [0.2.0] - 2026-11-17
+
+CHORES:
 - **The project moves from MPL-2.0 to the MIT License.** `LICENSE` now holds the MIT text;
   `NOTICE` records the upstream works the project derives from, including the scaffolding lineage,
   and which third-party material the MIT licence does not cover; `README.md` and `AGENTS.md` state
@@ -15,6 +17,15 @@ LICENSE:
   source remains in the entry point. The workflow and repository configuration derived from
   `caberdo/terraform-provider-trino`, `caberdo/terraform-provider-gravitino` and HashiCorp's
   scaffolding is called out in `NOTICE`. No provider behaviour, schema or state changes.
+- The CI, release and coverage tooling now comes from `caberdo/terraform-provider-kit` at
+  `v0.16.0`. The released version is the last git tag rather than a `VERSION` file, every pull
+  request that changes code, workflows, docs or examples adds a fragment under `changelog.d/`, and
+  the README install constraint and changelog headings were repaired where they disagreed.
+- The repository now runs a **weekly maintenance pipeline**: it reports which upstream release the
+  supported-versions matrix does not cover, runs the acceptance suite against that release as a canary so a
+  version bump can be judged as a matrix edit or a code change, and reports when the repository is behind
+  the shared CI kit or pins two different kit versions. Findings appear as one issue per category and
+  close themselves when resolved; nothing is bumped automatically.
 
 ## [0.1.0] - 2026-11-13
 

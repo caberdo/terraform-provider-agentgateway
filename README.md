@@ -53,7 +53,7 @@ terraform {
   required_providers {
     agentgateway = {
       source  = "caberdo/agentgateway"
-      version = "~> 0.1"
+      version = "~> 0.2"
     }
   }
 }
