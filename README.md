@@ -83,7 +83,7 @@ The current release is **v0.1.0**: the full v1 surface is implemented, every res
 | | |
 |---|---|
 | Terraform | 1.9 or later (plugin protocol 6.0) |
-| agentgateway | v1.7.0 or later — the first release with the config resource API. The supported window lives in [`.github/agentgateway-versions.txt`](./.github/agentgateway-versions.txt); the provider warns when it talks to an older gateway and never fails on a failed version probe |
+| agentgateway | v1.7.0 or later — the first release with all 15 config resource kinds (`llm.settings` arrived in v1.6.0, `frontend.policy` in v1.7.0). The supported window lives in [`.github/agentgateway-versions.txt`](./.github/agentgateway-versions.txt); the provider warns when it talks to an older gateway and never fails on a failed version probe |
 | Gateway storage | `hybrid` mode for the full surface — see [Storage modes](#storage-modes) |
 | Go (to build from source) | 1.27.4 |
 

@@ -3,5 +3,6 @@
 # and `make testacc-matrix` read this file as the single source of truth.
 #
 # v1.7.0 is the latest release, and also the floor: it is the first release
-# with the config resource API. Add the next release as a second line.
+# with all 15 config resource kinds (`llm.settings` arrived in v1.6.0,
+# `frontend.policy` in v1.7.0). Add the next release as a second line.
 v1.7.0
